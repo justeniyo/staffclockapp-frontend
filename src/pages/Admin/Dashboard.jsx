@@ -5,8 +5,9 @@ export default function AdminDashboard(){
   const { allUsers, leaveRequests, clockActivities } = useAuth()
   
   const stats = {
-    totalStaff: Object.keys(allUsers).length,
+    totalStaff: Object.values(allUsers).filter(user => user.role !== 'system').length,
     activeStaff: Object.values(allUsers).filter(user => user.isClockedIn).length,
+    unverifiedStaff: Object.values(allUsers).filter(user => !user.verified && user.role !== 'system').length,
     pendingRequests: leaveRequests.filter(req => req.status === 'pending').length,
     todayActivities: clockActivities.filter(activity => 
       new Date(activity.timestamp).toDateString() === new Date().toDateString()
@@ -40,8 +41,8 @@ export default function AdminDashboard(){
           <div className="col-md-3">
             <div className="card text-center">
               <div className="card-body">
-                <h3 className="text-warning">{stats.pendingRequests}</h3>
-                <p className="mb-0">Pending Requests</p>
+                <h3 className="text-warning">{stats.unverifiedStaff}</h3>
+                <p className="mb-0">Unverified Staff</p>
               </div>
             </div>
           </div>

@@ -107,15 +107,15 @@ export default function VerifyAccount() {
             </div>
             
             {error && (
-              <div className="alert alert-danger py-3">
+              <div className="alert alert-danger py-2">
                 <i className="fas fa-exclamation-triangle me-2"></i>
                 {error}
               </div>
             )}
             
             {success && (
-              <div className="alert alert-success py-3">
-                <i className="fas fa-check-circle me-2"></i>
+              <div className="alert alert-success py-2">
+                <i className="fas fa-check me-2"></i>
                 {success}
               </div>
             )}

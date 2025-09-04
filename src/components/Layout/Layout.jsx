@@ -1,3 +1,10 @@
+import { useState } from 'react'
+import { Offcanvas } from 'react-bootstrap'
+import AppNavbar from './Navbar'
+import Sidebar from './Sidebar'
+import { useAuth } from '../../context/AuthContext'
+import { useLocation } from 'react-router-dom'
+
 export default function Layout({ children, variant }) {
   const [show, setShow] = useState(false)
   const { user, isOnManager } = useAuth()

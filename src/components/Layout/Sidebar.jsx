@@ -82,16 +82,11 @@ export default function Sidebar({ variant='staff' }) {
     <div className="d-flex flex-column h-100">
       <div className="flex-grow-1">
         {/* Role Header */}
-        <div className="sidebar-brand">{getRoleDisplayName()}</div>
+        <div className="sidebar-role">{getRoleDisplayName()}</div>
         
         {/* Navigation Section */}
         <div className="sidebar-section-title">Navigation</div>
         {getNavigationItems()}
-      </div>
-
-      {/* Logout Footer */}
-      <div className="sidebar-footer">
-        <button className="w-100 sidebar-logout btn mt-2" onClick={onLogout}>Logout</button>
       </div>
     </div>
   )

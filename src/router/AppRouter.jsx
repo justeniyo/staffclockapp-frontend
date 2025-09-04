@@ -7,6 +7,7 @@ import LoginAdmin from '../pages/LoginAdmin'
 import LoginSecurity from '../pages/LoginSecurity'
 import LoginCEO from '../pages/LoginCEO'
 import ForgotPassword from '../pages/ForgotPassword'
+import VerifyResetOTP from '../pages/VerifyResetOTP'
 import ResetPassword from '../pages/ResetPassword'
 import VerifyAccount from '../pages/VerifyAccount'
 
@@ -36,6 +37,7 @@ export default function AppRouter() {
       <Route path="/security" element={<LoginSecurity />} />
       <Route path="/ceo" element={<LoginCEO />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/verify-reset-otp" element={<VerifyResetOTP />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/verify-account" element={<VerifyAccount />} />
 

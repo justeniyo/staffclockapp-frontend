@@ -1,53 +1,64 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
-export default function ResetPassword() {
+export default function VerifyResetOTP() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const { updateStaff } = useAuth()
+  const { activeOTPs, resendOTP } = useAuth()
   const [email, setEmail] = useState(searchParams.get('email') || '')
-  const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
+  const [otp, setOtp] = useState('')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(false)
-
-  // Check if user came from verified OTP flow
-  useEffect(() => {
-    const verified = searchParams.get('verified')
-    if (!verified || !email) {
-      navigate('/forgot-password')
-    }
-  }, [searchParams, email, navigate])
+  const [resendLoading, setResendLoading] = useState(false)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
-
-    if (password !== confirmPassword) {
-      setError('Passwords do not match')
-      return
-    }
-
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters')
-      return
-    }
-
     setLoading(true)
 
     try {
-      // Update password directly since OTP was already verified
-      updateStaff(email, { password })
-      setSuccess('Password updated! Redirecting to login...')
-      setTimeout(() => {
-        navigate('/staff')
-      }, 2000)
+      const otpData = activeOTPs[email]
+      
+      if (!otpData || otpData.type !== 'password_reset') {
+        throw new Error('No password reset request found')
+      }
+
+      if (otpData.otp !== otp) {
+        throw new Error('Invalid verification code')
+      }
+
+      if (Date.now() > otpData.expires) {
+        throw new Error('Code expired. Request a new one.')
+      }
+
+      // OTP verified, redirect to password reset
+      navigate(`/reset-password?email=${email}&verified=true`)
     } catch (err) {
-      setError('Failed to update password')
+      setError(err.message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleResendOTP = async () => {
+    if (!email) {
+      setError('Please enter your email address')
+      return
+    }
+
+    setResendLoading(true)
+    setError('')
+
+    try {
+      await resendOTP(email, 'password_reset')
+      setSuccess('New code sent!')
+      setTimeout(() => setSuccess(''), 3000)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setResendLoading(false)
     }
   }
 
@@ -59,8 +70,8 @@ export default function ResetPassword() {
         </div>
         <div className="card-body">
           <div className="login-title">
-            <i className="fas fa-shield-alt me-2"></i>
-            Set New Password
+            <i className="fas fa-key me-2"></i>
+            Verify Reset Code
           </div>
           
           <form onSubmit={handleSubmit}>
@@ -70,36 +81,38 @@ export default function ResetPassword() {
                 className="form-control" 
                 type="email" 
                 value={email} 
-                disabled
-              />
-            </div>
-            
-            <div className="mb-3">
-              <label className="form-label">New Password</label>
-              <input 
-                className="form-control" 
-                type="password" 
-                value={password} 
-                onChange={e=>setPassword(e.target.value)} 
+                onChange={e=>setEmail(e.target.value)} 
                 required 
-                placeholder="Enter new password"
-                minLength="6"
                 disabled={loading}
               />
             </div>
             
             <div className="mb-3">
-              <label className="form-label">Confirm Password</label>
-              <input 
-                className="form-control" 
-                type="password" 
-                value={confirmPassword} 
-                onChange={e=>setConfirmPassword(e.target.value)} 
-                required 
-                placeholder="Confirm new password"
-                minLength="6"
-                disabled={loading}
-              />
+              <label className="form-label">Verification Code</label>
+              <div className="input-group">
+                <input 
+                  className="form-control text-center" 
+                  type="text" 
+                  value={otp} 
+                  onChange={e=>setOtp(e.target.value)} 
+                  required 
+                  placeholder="6-digit code"
+                  maxLength="6"
+                  disabled={loading}
+                />
+                <button 
+                  type="button"
+                  className="btn btn-outline-warning"
+                  onClick={handleResendOTP}
+                  disabled={resendLoading || loading}
+                >
+                  {resendLoading ? (
+                    <i className="fas fa-spinner fa-spin"></i>
+                  ) : (
+                    <i className="fas fa-redo"></i>
+                  )}
+                </button>
+              </div>
             </div>
             
             {error && (
@@ -124,12 +137,12 @@ export default function ResetPassword() {
               {loading ? (
                 <>
                   <i className="fas fa-spinner fa-spin me-2"></i>
-                  Updating...
+                  Verifying...
                 </>
               ) : (
                 <>
-                  <i className="fas fa-lock me-2"></i>
-                  Update Password
+                  <i className="fas fa-check me-2"></i>
+                  Verify Code
                 </>
               )}
             </button>

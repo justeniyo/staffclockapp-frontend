@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 
 export default function LoginStaff() {
   const { login } = useAuth()
-  const [email, setEmail] = useState('dev1@company.com') // Fixed: Use valid seed email
+  const [email, setEmail] = useState('dev1@company.com')
   const [password, setPassword] = useState('password123')
   const [error, setError] = useState('')
 
@@ -19,7 +19,17 @@ export default function LoginStaff() {
     }
   }
 
-  const isVerificationError = error.includes('verify your account')
+  // Parse error message for verification link
+  const parseErrorMessage = (errorMsg) => {
+    if (errorMsg.includes('||')) {
+      const [message, linkPath] = errorMsg.split('||')
+      return { message, linkPath }
+    }
+    return { message: errorMsg, linkPath: null }
+  }
+
+  const { message: errorMessage, linkPath } = parseErrorMessage(error)
+  const isVerificationError = error.includes('not verified')
 
   return (
     <div className="login-page login-staff">
@@ -40,16 +50,13 @@ export default function LoginStaff() {
             </div>
             
             {error && (
-              <div className="alert alert-danger py-2">
-                {isVerificationError ? (
-                  <div>
-                    <div>{error}</div>
-                    <Link to="/verify-account" className="btn btn-sm btn-outline-primary mt-2">
-                      Verify Account
-                    </Link>
-                  </div>
-                ) : (
-                  error
+              <div className="alert alert-warning py-2">
+                <div className="mb-2">{errorMessage}</div>
+                {isVerificationError && linkPath && (
+                  <Link to={`/${linkPath}`} className="btn btn-sm btn-dark">
+                    <i className="fas fa-shield-alt me-1"></i>
+                    Verify Now
+                  </Link>
                 )}
               </div>
             )}

@@ -20,11 +20,11 @@ export default function ForgotPassword() {
 
     try {
       await forgotPassword(email)
-      setSuccess(`Verification code sent to ${email}. You'll be redirected to reset your password.`)
+      setSuccess(`Code sent to ${email}`)
       
-      // Redirect to reset password page after 2 seconds
+      // Redirect to verify reset OTP page
       setTimeout(() => {
-        navigate(`/reset-password?email=${email}`)
+        navigate(`/verify-reset-otp?email=${email}`)
       }, 2000)
     } catch (err) {
       setError(err.message)
