@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 export default function ForgotPassword() {
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const { forgotPassword } = useAuth()
   const [email, setEmail] = useState('')
   const [error, setError] = useState('')
@@ -18,8 +19,13 @@ export default function ForgotPassword() {
     setLoading(true)
 
     try {
-      const result = await forgotPassword(email)
-      setSuccess(`Password reset link sent to ${email}. Please check your email.`)
+      await forgotPassword(email)
+      setSuccess(`Verification code sent to ${email}. You'll be redirected to reset your password.`)
+      
+      // Redirect to reset password page after 2 seconds
+      setTimeout(() => {
+        navigate(`/reset-password?email=${email}`)
+      }, 2000)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -54,7 +60,10 @@ export default function ForgotPassword() {
           <div className="login-logo">StaffClock</div>
         </div>
         <div className="card-body">
-          <div className="login-title">Reset Password</div>
+          <div className="login-title">
+            <i className="fas fa-key me-2"></i>
+            Reset Password
+          </div>
           
           <form onSubmit={handleSubmit}>
             <div className="mb-3">
@@ -66,24 +75,47 @@ export default function ForgotPassword() {
                 onChange={e=>setEmail(e.target.value)} 
                 required 
                 placeholder="Enter your email address"
+                disabled={loading}
               />
             </div>
             
-            {error && <div className="alert alert-danger py-2">{error}</div>}
-            {success && <div className="alert alert-success py-2">{success}</div>}
+            {error && (
+              <div className="alert alert-danger py-2">
+                <i className="fas fa-exclamation-triangle me-2"></i>
+                {error}
+              </div>
+            )}
+            
+            {success && (
+              <div className="alert alert-success py-2">
+                <i className="fas fa-check me-2"></i>
+                {success}
+              </div>
+            )}
             
             <button 
               className="btn btn-warning w-100 mb-3" 
               type="submit"
               disabled={loading}
             >
-              {loading ? 'Sending...' : 'Send Reset Link'}
+              {loading ? (
+                <>
+                  <i className="fas fa-spinner fa-spin me-2"></i>
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <i className="fas fa-paper-plane me-2"></i>
+                  Send Reset Code
+                </>
+              )}
             </button>
           </form>
           
           <div className="text-center">
             <Link to={getBackLink()} className="text-decoration-none">
-              ← Back to Login
+              <i className="fas fa-arrow-left me-2"></i>
+              Back to Login
             </Link>
           </div>
         </div>

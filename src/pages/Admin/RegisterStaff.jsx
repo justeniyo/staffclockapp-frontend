@@ -32,10 +32,7 @@ export default function RegisterStaff() {
       }
       
       const result = registerStaff(formData)
-      setSuccess(`Staff member registered successfully! 
-        Verification link sent to ${formData.email}.
-        Default password: ${result.defaultPassword}
-        The user will need to verify their account before they can login.`)
+      setSuccess(`Staff registered successfully! Email: ${formData.email} | Password: ${result.defaultPassword} | OTP: ${result.otp}`)
       
       setFormData({
         firstName: '',

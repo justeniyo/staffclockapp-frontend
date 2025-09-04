@@ -1,11 +1,15 @@
+import { useState, useRef, useEffect } from 'react'
 import { Navbar, Container, Button } from 'react-bootstrap'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import { getFullName, getUserInitials } from '../../config/seedUsers'
 
 export default function AppNavbar({ onToggleMobile }) {
-  const { user, isOnManager } = useAuth()
+  const { user, isOnManager, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const [showUserDropdown, setShowUserDropdown] = useState(false)
+  const dropdownRef = useRef(null)
 
   const showPortal = user?.role === 'staff' && user?.isManager
   const goPortal = () => {
@@ -15,12 +19,23 @@ export default function AppNavbar({ onToggleMobile }) {
 
   const portalLabel = isOnManager ? 'Staff Portal' : 'Manager Portal'
 
-  // Get user initials
-  const getUserInitials = (name) => {
-    if (!name) return 'U'
-    const words = name.split(' ')
-    if (words.length === 1) return words[0].charAt(0).toUpperCase()
-    return (words[0].charAt(0) + words[words.length - 1].charAt(0)).toUpperCase()
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowUserDropdown(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
+
+  const handleLogout = () => {
+    setShowUserDropdown(false)
+    logout()
   }
 
   return (
@@ -34,14 +49,29 @@ export default function AppNavbar({ onToggleMobile }) {
             <Button className="portal-btn d-none d-lg-inline" onClick={goPortal}>{portalLabel}</Button>
           )}
           
-          {/* User Name Tag */}
+          {/* User Name Tag with Dropdown */}
           {user && (
-            <div className="navbar-user-tag">
-              <div className="user-icon">
-                <i className="fas fa-user"></i>
+            <div className="position-relative" ref={dropdownRef}>
+              <div 
+                className="navbar-user-tag"
+                onClick={() => setShowUserDropdown(!showUserDropdown)}
+              >
+                <div className="user-icon">
+                  <i className="fas fa-user"></i>
+                </div>
+                <span className="user-name d-none d-lg-inline">{getFullName(user)}</span>
+                <span className="user-initials d-lg-none">{getUserInitials(user)}</span>
+                <i className={`fas fa-chevron-${showUserDropdown ? 'up' : 'down'} ms-2`}></i>
               </div>
-              <span className="user-name d-none d-lg-inline">{user.name}</span>
-              <span className="user-initials d-lg-none">{getUserInitials(user.name)}</span>
+              
+              {showUserDropdown && (
+                <div className="user-dropdown">
+                  <button className="user-dropdown-item" onClick={handleLogout}>
+                    <i className="fas fa-sign-out-alt"></i>
+                    Logout
+                  </button>
+                </div>
+              )}
             </div>
           )}
           

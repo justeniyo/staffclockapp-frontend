@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { seedUsers, seedLeaveRequests, seedClockActivities } from '../config/seedUsers'
+import { seedUsers, seedLeaveRequests, seedClockActivities, getFullName } from '../config/seedUsers'
 
 const AuthContext = createContext()
 
@@ -28,8 +28,9 @@ export function AuthProvider({ children }) {
     return saved ? JSON.parse(saved) : seedUsers
   })
 
-  const [pendingUsers, setPendingUsers] = useState(()=>{
-    const saved = localStorage.getItem('sc_pending_users')
+  // OTP storage for both verification and password reset
+  const [activeOTPs, setActiveOTPs] = useState(()=>{
+    const saved = localStorage.getItem('sc_active_otps')
     return saved ? JSON.parse(saved) : {}
   })
 
@@ -52,13 +53,18 @@ export function AuthProvider({ children }) {
   }, [allUsers])
 
   useEffect(()=>{
-    localStorage.setItem('sc_pending_users', JSON.stringify(pendingUsers))
-  }, [pendingUsers])
+    localStorage.setItem('sc_active_otps', JSON.stringify(activeOTPs))
+  }, [activeOTPs])
 
   const login = ({ email, password, roleHint }) => {
     const record = allUsers[email]
     if (!record || record.password !== password) throw new Error('Invalid credentials')
-    if (!record.verified) throw new Error('Account not verified. Please check your email for OTP.')
+    if (!record.isActive) throw new Error('Account is deactivated. Please contact administrator.')
+    if (!record.verified) {
+      // Generate new OTP for unverified user trying to login
+      generateOTP(email, 'verification')
+      throw new Error(`Account not verified. OTP sent to ${email}.||verify-account?email=${email}`)
+    }
     if (roleHint && record.role !== roleHint) throw new Error('Wrong portal for this user')
     
     const u = { ...record, email }
@@ -75,11 +81,122 @@ export function AuthProvider({ children }) {
     navigate('/staff', { replace: true })
   }
 
+  // Helper function to generate OTP
+  const generateOTP = (email, type) => {
+    const otp = Math.floor(100000 + Math.random() * 900000).toString()
+    const expires = Date.now() + 300000 // 5 minutes
+    
+    setActiveOTPs(prev => ({
+      ...prev,
+      [email]: {
+        otp,
+        expires,
+        type, // 'verification' or 'password_reset'
+        attempts: 0
+      }
+    }))
+
+    // Simulate email sending
+    console.log(`${type === 'verification' ? 'Verification' : 'Password Reset'} OTP sent to ${email}: ${otp}`)
+    return { success: true, otp } // In production, don't return OTP
+  }
+
+  const forgotPassword = async (email) => {
+    const existingUser = allUsers[email]
+    if (!existingUser) {
+      throw new Error('No account found with this email address')
+    }
+
+    return generateOTP(email, 'password_reset')
+  }
+
+  const resetPassword = async (email, otp, newPassword) => {
+    const otpData = activeOTPs[email]
+    
+    if (!otpData || otpData.type !== 'password_reset') {
+      throw new Error('No password reset request found for this email')
+    }
+
+    if (otpData.otp !== otp) {
+      // Increment failed attempts
+      setActiveOTPs(prev => ({
+        ...prev,
+        [email]: { ...prev[email], attempts: prev[email].attempts + 1 }
+      }))
+      throw new Error('Invalid verification code')
+    }
+
+    if (Date.now() > otpData.expires) {
+      throw new Error('Verification code has expired. Please request a new one.')
+    }
+
+    // Update password in allUsers
+    setAllUsers(prev => ({
+      ...prev,
+      [email]: { ...prev[email], password: newPassword }
+    }))
+
+    // Remove used OTP
+    setActiveOTPs(prev => {
+      const updated = { ...prev }
+      delete updated[email]
+      return updated
+    })
+
+    console.log(`Password updated successfully for ${email}`)
+    return { success: true }
+  }
+
+  const resendOTP = async (email, type = 'verification') => {
+    const user = allUsers[email]
+    if (!user) {
+      throw new Error('No account found for this email')
+    }
+
+    if (type === 'verification' && user.verified) {
+      throw new Error('Account is already verified')
+    }
+
+    return generateOTP(email, type)
+  }
+
+  const verifyOTP = (email, otp) => {
+    const otpData = activeOTPs[email]
+    const user = allUsers[email]
+    
+    if (!otpData) throw new Error('No verification code found for this email')
+    if (!user) throw new Error('No account found for this email')
+    if (otpData.otp !== otp) {
+      // Increment failed attempts
+      setActiveOTPs(prev => ({
+        ...prev,
+        [email]: { ...prev[email], attempts: prev[email].attempts + 1 }
+      }))
+      throw new Error('Invalid verification code')
+    }
+    if (Date.now() > otpData.expires) throw new Error('Verification code has expired')
+    
+    // Mark user as verified
+    setAllUsers(prev => ({
+      ...prev,
+      [email]: { ...prev[email], verified: true }
+    }))
+    
+    // Remove used OTP
+    setActiveOTPs(prev => {
+      const updated = { ...prev }
+      delete updated[email]
+      return updated
+    })
+    
+    return true
+  }
+
   const clockIn = () => {
     const activity = {
       id: `ca_${Date.now()}`,
       staffId: user.email,
-      staffName: user.name,
+      staffName: getFullName(user),
       department: user.department,
       action: 'clock_in', 
       timestamp: new Date().toISOString(),
@@ -89,7 +206,6 @@ export function AuthProvider({ children }) {
     setClockActivities(prev => [activity, ...prev])
     setUser(prev => ({ ...prev, isClockedIn: true }))
     
-    // Update user in allUsers as well
     setAllUsers(prev => ({
       ...prev,
       [user.email]: { ...prev[user.email], isClockedIn: true }
@@ -100,7 +216,7 @@ export function AuthProvider({ children }) {
     const activity = {
       id: `ca_${Date.now()}`,
       staffId: user.email,
-      staffName: user.name,
+      staffName: getFullName(user),
       department: user.department,
       action: 'clock_out',
       timestamp: new Date().toISOString(), 
@@ -110,7 +226,6 @@ export function AuthProvider({ children }) {
     setClockActivities(prev => [activity, ...prev])
     setUser(prev => ({ ...prev, isClockedIn: false }))
     
-    // Update user in allUsers as well  
     setAllUsers(prev => ({
       ...prev,
       [user.email]: { ...prev[user.email], isClockedIn: false }
@@ -121,7 +236,7 @@ export function AuthProvider({ children }) {
     const newRequest = {
       id: `lr_${Date.now()}`,
       staffId: user.email,
-      staffName: user.name,
+      staffName: getFullName(user),
       department: user.department,
       manager: user.manager,
       ...requestData,
@@ -151,50 +266,30 @@ export function AuthProvider({ children }) {
 
   const registerStaff = (staffData) => {
     const email = staffData.email
-    const otp = Math.floor(100000 + Math.random() * 900000).toString()
-    const defaultPassword = 'Welcome123!' // Default password for new users
+    const defaultPassword = 'Welcome123!'
     
     const newUser = {
       ...staffData,
-      password: defaultPassword, // Set default password
-      verified: false,
+      password: defaultPassword,
+      verified: false, // User needs to verify
+      isActive: true,
       createdBy: user.email,
       createdAt: new Date().toISOString(),
       isClockedIn: false
     }
     
-    setPendingUsers(prev => ({
-      ...prev,
-      [email]: { ...newUser, otp, otpExpires: Date.now() + 300000 } // 5 min
-    }))
-    
-    // Simulate email sending
-    console.log(`OTP sent to ${email}: ${otp}`)
-    console.log(`Default password for ${email}: ${defaultPassword}`)
-    return { success: true, otp, defaultPassword } // In production, don't return OTP
-  }
-
-  const verifyOTP = (email, otp) => {
-    const pendingUser = pendingUsers[email]
-    if (!pendingUser) throw new Error('No pending verification found')
-    if (pendingUser.otp !== otp) throw new Error('Invalid OTP')
-    if (Date.now() > pendingUser.otpExpires) throw new Error('OTP expired')
-    
-    const { otp: _, otpExpires: __, ...userData } = pendingUser
-    
-    // Add verified user to allUsers immediately
+    // Add directly to allUsers (no longer using pendingUsers)
     setAllUsers(prev => ({
       ...prev,
-      [email]: { ...userData, verified: true }
+      [email]: newUser
     }))
     
-    setPendingUsers(prev => {
-      const newPending = { ...prev }
-      delete newPending[email]
-      return newPending
-    })
+    // Generate verification OTP
+    const result = generateOTP(email, 'verification')
     
-    return true
+    console.log(`Staff registered: ${email}`)
+    console.log(`Default password: ${defaultPassword}`)
+    return { ...result, defaultPassword } // In production, don't return sensitive data
   }
 
   const updateStaff = (email, updates) => {
@@ -210,19 +305,22 @@ export function AuthProvider({ children }) {
     user, 
     login, 
     logout, 
+    forgotPassword,
+    resetPassword,
+    resendOTP,
+    verifyOTP,
     clockIn, 
     clockOut, 
     isOnManager,
     leaveRequests,
     clockActivities,
     allUsers,
-    pendingUsers,
+    activeOTPs,
     submitLeaveRequest,
     processLeaveRequest,
     registerStaff,
-    verifyOTP,
     updateStaff
-  }),[user, isOnManager, leaveRequests, clockActivities, allUsers, pendingUsers])
+  }),[user, isOnManager, leaveRequests, clockActivities, allUsers, activeOTPs])
   
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

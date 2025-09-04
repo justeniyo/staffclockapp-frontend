@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useAuth } from '../../context/AuthContext'
+import { getFullName } from '../../config/seedUsers'
 
 export default function ManageStaff(){
   const { allUsers, updateStaff } = useAuth()
@@ -22,7 +23,7 @@ export default function ManageStaff(){
 
     if (filters.search) {
       filtered = filtered.filter(([email, user]) => 
-        user.name?.toLowerCase().includes(filters.search.toLowerCase()) ||
+        getFullName(user).toLowerCase().includes(filters.search.toLowerCase()) ||
         email.toLowerCase().includes(filters.search.toLowerCase())
       )
     }
@@ -40,7 +41,7 @@ export default function ManageStaff(){
       filtered = filtered.filter(([email, user]) => user.verified === isVerified)
     }
 
-    return filtered.sort(([,a], [,b]) => (a.name || '').localeCompare(b.name || ''))
+    return filtered.sort(([,a], [,b]) => getFullName(a).localeCompare(getFullName(b)))
   }, [allUsers, filters])
 
   const startEdit = (email, user) => {
@@ -154,14 +155,27 @@ export default function ManageStaff(){
                     <tr key={email}>
                       <td>
                         {editingUser === email ? (
-                          <input 
-                            className="form-control form-control-sm"
-                            value={editForm.name || ''}
-                            onChange={(e) => setEditForm(prev => ({...prev, name: e.target.value}))}
-                          />
+                          <div className="row g-2">
+                            <div className="col">
+                              <input 
+                                className="form-control form-control-sm"
+                                placeholder="First Name"
+                                value={editForm.firstName || ''}
+                                onChange={(e) => setEditForm(prev => ({...prev, firstName: e.target.value}))}
+                              />
+                            </div>
+                            <div className="col">
+                              <input 
+                                className="form-control form-control-sm"
+                                placeholder="Last Name"
+                                value={editForm.lastName || ''}
+                                onChange={(e) => setEditForm(prev => ({...prev, lastName: e.target.value}))}
+                              />
+                            </div>
+                          </div>
                         ) : (
                           <div>
-                            <strong>{user.name}</strong>
+                            <strong>{getFullName(user)}</strong>
                             {user.isManager && <span className="badge bg-info ms-2">Manager</span>}
                           </div>
                         )}
@@ -221,19 +235,22 @@ export default function ManageStaff(){
                             <option value="">No Manager</option>
                             {managers.map(([managerEmail, manager]) => (
                               <option key={managerEmail} value={managerEmail}>
-                                {manager.name}
+                                {getFullName(manager)}
                               </option>
                             ))}
                           </select>
                         ) : (
-                          user.manager ? allUsers[user.manager]?.name || 'Unknown' : '-'
+                          user.manager ? getFullName(allUsers[user.manager]) || 'Unknown' : '-'
                         )}
                       </td>
                       <td>
-                        <span className={`badge ${user.verified ? 'bg-success' : 'bg-warning text-dark'}`}>
-                          {user.verified ? 'Verified' : 'Pending'}
-                        </span>
-                        {user.isClockedIn && <span className="badge bg-info ms-1">Clocked In</span>}
+                        <div className="d-flex flex-column gap-1">
+                          <span className={`badge ${user.verified ? 'bg-success' : 'bg-warning text-dark'}`}>
+                            {user.verified ? 'Verified' : 'Pending Verification'}
+                          </span>
+                          {user.isClockedIn && <span className="badge bg-info">Clocked In</span>}
+                          {!user.isActive && <span className="badge bg-danger">Inactive</span>}
+                        </div>
                       </td>
                       <td>
                         {editingUser === email ? (

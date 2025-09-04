@@ -1,5 +1,6 @@
 import { useAuth } from '../../context/AuthContext'
 import { Link } from 'react-router-dom'
+import { getFullName } from '../../config/seedUsers'
 
 export default function StaffDashboard(){
   const { user, leaveRequests, clockActivities } = useAuth()
@@ -12,7 +13,7 @@ export default function StaffDashboard(){
     <div>
       <div className="page-header">
         <h2 className="page-title">Staff Dashboard</h2>
-        <p className="mb-0">Welcome back, {user.name}!</p>
+        <p className="mb-0">Welcome back, {getFullName(user)}!</p>
       </div>
       
       <div className="page-content">

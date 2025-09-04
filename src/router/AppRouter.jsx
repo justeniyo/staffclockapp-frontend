@@ -6,6 +6,9 @@ import LoginStaff from '../pages/LoginStaff'
 import LoginAdmin from '../pages/LoginAdmin'
 import LoginSecurity from '../pages/LoginSecurity'
 import LoginCEO from '../pages/LoginCEO'
+import ForgotPassword from '../pages/ForgotPassword'
+import ResetPassword from '../pages/ResetPassword'
+import VerifyAccount from '../pages/VerifyAccount'
 
 // Protected
 import { RequireAuth } from './RequireAuth'
@@ -27,11 +30,14 @@ export default function AppRouter() {
       {/* Redirect root to staff login */}
       <Route path="/" element={<Navigate to="/staff" replace />} />
 
-      {/* Logins */}
+      {/* Public Auth Routes */}
       <Route path="/staff" element={<LoginStaff />} />
       <Route path="/admin" element={<LoginAdmin />} />
       <Route path="/security" element={<LoginSecurity />} />
       <Route path="/ceo" element={<LoginCEO />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/verify-account" element={<VerifyAccount />} />
 
       {/* Staff (includes managers) */}
       <Route element={<RequireAuth roles={['staff']} />}>

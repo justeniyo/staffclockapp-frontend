@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 
 export default function LoginStaff() {
   const { login } = useAuth()
-  const [email, setEmail] = useState('staff.email@company.com')
+  const [email, setEmail] = useState('dev1@company.com') // Fixed: Use valid seed email
   const [password, setPassword] = useState('password123')
   const [error, setError] = useState('')
 
@@ -32,7 +32,7 @@ export default function LoginStaff() {
           <form onSubmit={onSubmit}>
             <div className="mb-3">
               <label className="form-label">Email</label>
-              <input className="form-control" type="email" placeholder={email} onChange={e=>setEmail(e.target.value)} required />
+              <input className="form-control" type="email" value={email} onChange={e=>setEmail(e.target.value)} required />
             </div>
             <div className="mb-3">
               <label className="form-label">Password</label>

@@ -1,4 +1,5 @@
 import { useAuth } from '../../context/AuthContext'
+import { getFullName } from '../../config/seedUsers'
 
 export default function ManagerDashboard(){
   const { leaveRequests, allUsers, user } = useAuth()
@@ -65,7 +66,7 @@ export default function ManagerDashboard(){
                       {teamMembers.slice(0, 3).map(member => (
                         <div key={member.email} className="d-flex justify-content-between align-items-center py-2 border-bottom">
                           <div>
-                            <strong>{member.name}</strong>
+                            <strong>{getFullName(member)}</strong>
                             <div className="text-muted small">{member.department}</div>
                           </div>
                           <span className={`badge ${member.isClockedIn ? 'bg-success' : 'bg-secondary'}`}>

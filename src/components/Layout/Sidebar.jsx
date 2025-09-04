@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 
-export default function Sidebar({ onLogout, variant='staff' }) {
+export default function Sidebar({ variant='staff' }) {
   const { user, leaveRequests } = useAuth()
   const navCls = ({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`
 
