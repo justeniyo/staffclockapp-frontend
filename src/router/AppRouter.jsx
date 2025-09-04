@@ -10,6 +10,7 @@ import ForgotPassword from '../pages/ForgotPassword'
 import VerifyResetOTP from '../pages/VerifyResetOTP'
 import ResetPassword from '../pages/ResetPassword'
 import VerifyAccount from '../pages/VerifyAccount'
+import NotFound from '../pages/NotFound'
 
 // Protected
 import { RequireAuth } from './RequireAuth'
@@ -28,11 +29,11 @@ import CEODashboard from '../pages/CEO/Dashboard'
 export default function AppRouter() {
   return (
     <Routes>
-      {/* Redirect root to staff login */}
-      <Route path="/" element={<Navigate to="/staff" replace />} />
+      {/* Staff login redirects to root */}
+      <Route path="/staff" element={<Navigate to="/" replace />} />
 
       {/* Public Auth Routes */}
-      <Route path="/staff" element={<LoginStaff />} />
+      <Route path="/" element={<LoginStaff />} />
       <Route path="/admin" element={<LoginAdmin />} />
       <Route path="/security" element={<LoginSecurity />} />
       <Route path="/ceo" element={<LoginCEO />} />
@@ -67,6 +68,9 @@ export default function AppRouter() {
       <Route element={<RequireAuth roles={['ceo']} />}>
         <Route path="/ceo-dashboard" element={<Layout><CEODashboard /></Layout>} />
       </Route>
+
+      {/* 404 Not Found - must be last */}
+      <Route path="*" element={<NotFound />} />
     </Routes>
   )
 }

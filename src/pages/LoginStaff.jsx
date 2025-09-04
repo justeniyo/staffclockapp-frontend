@@ -1,12 +1,28 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 export default function LoginStaff() {
-  const { login } = useAuth()
+  const { login, user } = useAuth()
+  const navigate = useNavigate()
   const [email, setEmail] = useState('dev1@company.com')
   const [password, setPassword] = useState('password123')
   const [error, setError] = useState('')
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user) {
+      if (user.role === 'staff') {
+        navigate('/clock', { replace: true })
+      } else if (user.role === 'admin') {
+        navigate('/admin-dashboard', { replace: true })
+      } else if (user.role === 'security') {
+        navigate('/security-dashboard', { replace: true })
+      } else if (user.role === 'ceo') {
+        navigate('/ceo-dashboard', { replace: true })
+      }
+    }
+  }, [user, navigate])
 
   const onSubmit = (e) => {
     e.preventDefault()
@@ -69,6 +85,15 @@ export default function LoginStaff() {
               Forgot your password?
             </Link>
           </div>
+          
+          {/* <div className="text-center mt-2">
+            <small className="text-muted">
+              Other portals: 
+              <Link to="/admin" className="text-decoration-none ms-1">Admin</Link> | 
+              <Link to="/security" className="text-decoration-none ms-1">Security</Link> | 
+              <Link to="/ceo" className="text-decoration-none ms-1">CEO</Link>
+            </small>
+          </div> */}
         </div>
       </div>
     </div>
