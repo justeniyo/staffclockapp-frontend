@@ -1,0 +1,430 @@
+@use "sass:map";
+@use "bootstrap/scss/functions";
+
+$dark: #121826;
+$brand-warning: #ffd54d;
+$brand-warning-soft: #fff3b3;
+$body-bg: #f8fafc;
+$light: #fffef9;
+
+// Bootstrap overrides (before import)
+$navbar-light-bg: $brand-warning;
+$navbar-light-color: #111;
+
+// Load Bootstrap
+@use "bootstrap/scss/bootstrap";
+
+// Font Awesome for icons
+@import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css');
+
+html, body, #root { height: 100%; }
+body { margin: 0; background: $body-bg; }
+
+.app-shell {
+  height: 100vh;
+  display: flex;
+  overflow: hidden;
+}
+
+/* Sidebar */
+.sidebar-fixed {
+  width: 264px;
+  background: $dark;
+  color: #fff;
+  display: none;
+}
+@media (min-width: 992px) {
+  .sidebar-fixed {
+    display: flex;
+    flex-direction: column;
+    padding: 1rem;
+  }
+}
+
+.sidebar-brand {
+  font-weight: 900;
+  font-style: italic;
+  font-size: 1.5rem;
+  color: #fff;
+  margin-bottom: .75rem;
+}
+
+.sidebar-section-title {
+  color: #94a3b8;
+  font-size: .75rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin: .5rem 0 .25rem;
+  font-weight: 700;
+}
+
+.sidebar-link {
+  display: block;
+  color: #d1d5db;
+  padding: .6rem .8rem;
+  border-radius: .75rem;
+  text-decoration: none;
+  margin-bottom: .35rem;
+  font-weight: 500;
+  transition: background .2s, color .2s;
+}
+.sidebar-link:hover { 
+  color: #fff; 
+  background: rgba(255, 213, 77, .18); 
+}
+.sidebar-link.active { 
+  color: #111; 
+  background: #ffde73; 
+  font-weight: 700; 
+}
+
+.sidebar-logout {
+  background: #ffde73;
+  color: #111;
+  font-weight: 900;
+  font-size: 1.05rem;
+  padding: .85rem .95rem;
+  border-radius: .75rem;
+  border: none;
+  transition: background .2s ease;
+}
+
+.sidebar-logout:hover {
+  background: #ffd54d;
+}
+
+.sidebar-footer { 
+  flex-shrink: 0;
+}
+
+/* Main column */
+.main-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* Navbar */
+.app-navbar {
+  flex: 0 0 auto;
+  padding-top: .35rem;
+  padding-bottom: .35rem;
+}
+
+.brand-big {
+  font-size: 1.6rem;
+  font-weight: 900;
+  font-style: italic;
+}
+
+.portal-btn {
+  background: #fff;
+  border: 0;
+  font-weight: 800;
+  border-radius: 9999px;
+  padding: .4rem .9rem;
+  box-shadow: 0 2px 6px rgba(0,0,0,.1);
+  transition: transform .1s ease;
+}
+
+.portal-btn:hover {
+  transform: translateY(-1px);
+}
+
+/* Navbar User Tag */
+.navbar-user-tag {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .5rem .75rem;
+  border: 2px solid #111;
+  border-radius: 9999px;
+  background: transparent;
+  transition: all .2s ease;
+  margin-left: .5rem;
+}
+
+.navbar-user-tag:hover {
+  background: rgba(255, 255, 255, .1);
+  transform: translateY(-1px);
+}
+
+.navbar-user-tag .user-icon {
+  color: #111;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.navbar-user-tag .user-name {
+  color: #111;
+  font-weight: 600;
+  font-size: .9rem;
+  white-space: nowrap;
+}
+
+.navbar-user-tag .user-initials {
+  color: #111;
+  font-weight: 700;
+  font-size: .85rem;
+  letter-spacing: .5px;
+}
+
+/* Content */
+.content-scroll {
+  flex: 1 1 auto;
+  overflow: auto;
+  background: #fff;
+  padding: 0; /* Remove default padding */
+}
+
+/* Sticky page header — sits directly under navbar with no gap */
+.page-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: linear-gradient(180deg, #fffef8, $brand-warning-soft);
+  margin: 0; /* Remove all margins */
+  padding: 1rem 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.06);
+  border-bottom: 1px solid rgba(0,0,0,.05);
+}
+
+.page-title {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 900;
+}
+
+/* Page content with gap after header */
+.page-content {
+  padding: 16px;
+}
+
+/* For pages without explicit page-content wrapper, add top padding */
+.page-header + * {
+  padding: 16px;
+}
+
+.page-header + .row,
+.page-header + .card,
+.page-header + .alert {
+  margin-top: 16px;
+  margin-left: 16px;
+  margin-right: 16px;
+}
+
+/* Login */
+.login-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.login-staff { background: #121826; }
+.login-admin { background: #fff9e6; }
+.login-security { background: #ffe35a; }
+.login-ceo { background: #fffdf6; }
+
+.card.login-card {
+  border: none;
+  box-shadow: 0 10px 30px rgba(0,0,0,.25);
+  overflow: hidden;
+  max-width: 500px;
+  width: 100%;
+}
+
+.card.login-card .card-header {
+  background: linear-gradient(180deg, #ffd54d, #ffea99);
+  padding: 2.6rem 1.5rem;
+  border-bottom: none;
+  text-align: center;
+}
+
+.card.login-card .card-body { 
+  background: #fffef6; 
+}
+
+.login-logo {
+  font-size: 2rem;
+  font-weight: 900;
+  font-style: italic;
+}
+
+.login-title {
+  text-align: center;
+  font-weight: 800;
+  font-size: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+/* Enhanced card styling */
+.card {
+  border: none;
+  box-shadow: 0 2px 10px rgba(0,0,0,.08);
+  transition: box-shadow .2s ease;
+}
+
+.card:hover {
+  box-shadow: 0 4px 20px rgba(0,0,0,.12);
+}
+
+/* Enhanced button styling */
+.btn {
+  border-radius: .5rem;
+  font-weight: 600;
+  transition: all .2s ease;
+}
+
+.btn-warning {
+  background: linear-gradient(135deg, #ffd54d, #ffde73);
+  border: none;
+  color: #111;
+}
+
+.btn-warning:hover {
+  background: linear-gradient(135deg, #ffde73, #ffe99d);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 213, 77, .3);
+}
+
+/* Badge enhancements */
+.badge {
+  font-weight: 600;
+  border-radius: .375rem;
+  padding: .375rem .75rem;
+}
+
+/* Table enhancements */
+.table-hover tbody tr:hover {
+  background-color: rgba(255, 213, 77, .1);
+}
+
+/* Form enhancements */
+.form-control:focus,
+.form-select:focus {
+  border-color: #ffd54d;
+  box-shadow: 0 0 0 .2rem rgba(255, 213, 77, .25);
+}
+
+/* Responsive adjustments for navbar user tag */
+@media (max-width: 991.98px) {
+  .navbar-user-tag {
+    padding: .4rem .6rem;
+  }
+  
+  .navbar-user-tag .user-icon {
+    font-size: .9rem;
+  }
+  
+  .navbar-user-tag .user-initials {
+    font-size: .8rem;
+  }
+}
+
+/* Mobile responsive improvements */
+@media (max-width: 767.98px) {
+  .page-header {
+    padding: .75rem 12px;
+  }
+  
+  .page-content {
+    padding: 12px;
+  }
+  
+  .page-title {
+    font-size: 1.2rem;
+  }
+  
+  .card-body {
+    padding: 1rem;
+  }
+  
+  .btn-lg {
+    padding: .75rem 1.5rem;
+    font-size: 1rem;
+  }
+  
+  .navbar-user-tag {
+    padding: .35rem .5rem;
+    margin-left: .25rem;
+  }
+}
+
+/* Animation for loading states */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .5; }
+}
+
+.loading {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Enhanced progress bar */
+.progress {
+  background-color: #e5e7eb;
+  border-radius: .5rem;
+  overflow: hidden;
+}
+
+.progress-bar {
+  transition: width .3s ease;
+}
+
+/* Modal enhancements */
+.modal-content {
+  border: none;
+  border-radius: .75rem;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, .1), 0 10px 10px -5px rgba(0, 0, 0, .04);
+}
+
+.modal-header {
+  border-bottom: 1px solid #e5e7eb;
+  padding: 1.5rem;
+}
+
+.modal-body {
+  padding: 1.5rem;
+}
+
+.modal-footer {
+  border-top: 1px solid #e5e7eb;
+  padding: 1.5rem;
+}
+
+/* Alert enhancements */
+.alert {
+  border: none;
+  border-radius: .5rem;
+  font-weight: 500;
+}
+
+.alert-success {
+  background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+  color: #065f46;
+}
+
+.alert-danger {
+  background: linear-gradient(135deg, #fee2e2, #fecaca);
+  color: #991b1b;
+}
+
+.alert-warning {
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  color: #92400e;
+}
+
+/* Utility classes */
+.text-truncate-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.shadow-sm { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, .05); }
+.shadow { box-shadow: 0 1px 3px 0 rgba(0, 0, 0, .1), 0 1px 2px 0 rgba(0, 0, 0, .06); }
+.shadow-lg { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, .1), 0 4px 6px -2px rgba(0, 0, 0, .05); }
