@@ -1,14 +1,24 @@
+// src/pages/Manager/LeaveRequests.jsx - Updated for hierarchical structure
+
 import { useState, useMemo, useCallback } from 'react'
 import { useAuth } from '../../context/AuthContext'
 
 export default function LeaveRequests() {
-  const { leaveRequests, processLeaveRequest, user, allUsers } = useAuth()
+  const { 
+    user, 
+    processLeaveRequest, 
+    getPendingLeaveRequestsForApproval,
+    getMyDirectReports,
+    allUsers
+  } = useAuth()
+  
   const [filters, setFilters] = useState({
     search: '',
     type: '',
     status: 'all',
     dateFrom: '',
-    dateTo: ''
+    dateTo: '',
+    urgency: 'all'
   })
   const [sortConfig, setSortConfig] = useState({
     key: 'requestDate',
@@ -18,13 +28,22 @@ export default function LeaveRequests() {
   const [itemsPerPage, setItemsPerPage] = useState(25)
   const [selectedRequest, setSelectedRequest] = useState(null)
 
-  // Get team members
-  const teamMembers = Object.values(allUsers).filter(staff => staff.manager === user.email)
+  // Get all leave requests that this manager can approve
+  const allApprovalRequests = getPendingLeaveRequestsForApproval()
+  const teamMembers = getMyDirectReports()
   const teamEmails = teamMembers.map(member => member.email)
+  
+  // Get all leave requests from team members (not just pending ones for approval)
+  const allTeamRequests = useMemo(() => {
+    // This would typically come from a database query
+    // For now, we'll simulate getting all requests from team members
+    const { leaveRequests } = useAuth()
+    return leaveRequests.filter(req => teamEmails.includes(req.staffId))
+  }, [teamEmails])
   
   // Advanced filtering and sorting
   const filteredAndSortedRequests = useMemo(() => {
-    let filtered = leaveRequests.filter(req => teamEmails.includes(req.staffId))
+    let filtered = allTeamRequests
 
     // Apply filters
     if (filters.search) {
@@ -39,6 +58,21 @@ export default function LeaveRequests() {
 
     if (filters.status !== 'all') {
       filtered = filtered.filter(req => req.status === filters.status)
+    }
+
+    if (filters.urgency !== 'all') {
+      const now = new Date()
+      const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+      
+      if (filters.urgency === 'urgent') {
+        filtered = filtered.filter(req => 
+          req.status === 'pending' && new Date(req.startDate) <= sevenDaysFromNow
+        )
+      } else if (filters.urgency === 'normal') {
+        filtered = filtered.filter(req => 
+          req.status !== 'pending' || new Date(req.startDate) > sevenDaysFromNow
+        )
+      }
     }
 
     if (filters.dateFrom) {
@@ -67,6 +101,18 @@ export default function LeaveRequests() {
         bValue = bValue.toLowerCase()
       }
 
+      // Add urgency as secondary sort for pending requests
+      if (sortConfig.key === 'urgency' || (sortConfig.key === 'status' && a.status === 'pending' && b.status === 'pending')) {
+        const now = new Date()
+        const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+        const aUrgent = new Date(a.startDate) <= sevenDaysFromNow
+        const bUrgent = new Date(b.startDate) <= sevenDaysFromNow
+        
+        if (aUrgent !== bUrgent) {
+          return sortConfig.direction === 'asc' ? (aUrgent ? -1 : 1) : (aUrgent ? 1 : -1)
+        }
+      }
+
       if (aValue < bValue) {
         return sortConfig.direction === 'asc' ? -1 : 1
       }
@@ -77,7 +123,7 @@ export default function LeaveRequests() {
     })
 
     return sorted
-  }, [leaveRequests, teamEmails, filters, sortConfig])
+  }, [allTeamRequests, filters, sortConfig])
 
   // Pagination
   const totalPages = Math.ceil(filteredAndSortedRequests.length / itemsPerPage)
@@ -101,8 +147,12 @@ export default function LeaveRequests() {
   }, [])
 
   const handleProcess = (requestId, status) => {
-    processLeaveRequest(requestId, status, '') // No notes
-    setSelectedRequest(null)
+    try {
+      processLeaveRequest(requestId, status)
+      setSelectedRequest(null)
+    } catch (error) {
+      alert(error.message)
+    }
   }
 
   const clearFilters = () => {
@@ -111,7 +161,8 @@ export default function LeaveRequests() {
       type: '',
       status: 'all',
       dateFrom: '',
-      dateTo: ''
+      dateTo: '',
+      urgency: 'all'
     })
     setCurrentPage(1)
   }
@@ -144,6 +195,23 @@ export default function LeaveRequests() {
     return Math.ceil((new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24)) + 1
   }
 
+  const isUrgent = (request) => {
+    if (request.status !== 'pending') return false
+    const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+    return new Date(request.startDate) <= sevenDaysFromNow
+  }
+
+  const canApprove = (request) => {
+    return request.status === 'pending' && request.manager === user.email
+  }
+
+  const getUserLevelTitle = () => {
+    if (user.manager === 'ceo@company.com') {
+      return 'C-Level Executive'
+    }
+    return 'Department Manager'
+  }
+
   return (
     <div>
       <div className="page-header">
@@ -151,7 +219,7 @@ export default function LeaveRequests() {
           <div>
             <h2 className="page-title">Team Leave Requests</h2>
             <p className="mb-0 text-muted">
-              Showing {filteredAndSortedRequests.length} of {leaveRequests.filter(req => teamEmails.includes(req.staffId)).length} requests
+              {getUserLevelTitle()} - Showing {filteredAndSortedRequests.length} of {allTeamRequests.length} requests
             </p>
           </div>
         </div>
@@ -174,7 +242,7 @@ export default function LeaveRequests() {
           </div>
           <div className="card-body">
             <div className="row g-3">
-              <div className="col-lg-3 col-md-6">
+              <div className="col-lg-2 col-md-6">
                 <label className="form-label">Search Employee</label>
                 <div className="input-group">
                   <span className="input-group-text"><i className="fas fa-search"></i></span>
@@ -214,7 +282,19 @@ export default function LeaveRequests() {
                   <option value="rejected">Rejected</option>
                 </select>
               </div>
-              <div className="col-lg-5 col-md-6">
+              <div className="col-lg-2 col-md-6">
+                <label className="form-label">Urgency</label>
+                <select 
+                  className="form-select"
+                  value={filters.urgency}
+                  onChange={(e) => handleFilterChange({...filters, urgency: e.target.value})}
+                >
+                  <option value="all">All</option>
+                  <option value="urgent">Urgent (≤7 days)</option>
+                  <option value="normal">Normal (>7 days)</option>
+                </select>
+              </div>
+              <div className="col-lg-4 col-md-6">
                 <label className="form-label">Leave Date Range</label>
                 <div className="input-group">
                   <input 
@@ -233,6 +313,50 @@ export default function LeaveRequests() {
                     title="To Date"
                   />
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Summary Cards */}
+        <div className="row g-3 mb-4">
+          <div className="col-md-3">
+            <div className="card text-center">
+              <div className="card-body">
+                <h4 className="text-warning">
+                  {allApprovalRequests.length}
+                </h4>
+                <p className="mb-0 small">Awaiting Your Approval</p>
+              </div>
+            </div>
+          </div>
+          <div className="col-md-3">
+            <div className="card text-center">
+              <div className="card-body">
+                <h4 className="text-danger">
+                  {allApprovalRequests.filter(req => isUrgent(req)).length}
+                </h4>
+                <p className="mb-0 small">Urgent Requests</p>
+              </div>
+            </div>
+          </div>
+          <div className="col-md-3">
+            <div className="card text-center">
+              <div className="card-body">
+                <h4 className="text-success">
+                  {allTeamRequests.filter(req => req.status === 'approved').length}
+                </h4>
+                <p className="mb-0 small">Approved This Month</p>
+              </div>
+            </div>
+          </div>
+          <div className="col-md-3">
+            <div className="card text-center">
+              <div className="card-body">
+                <h4 className="text-info">
+                  {teamMembers.length}
+                </h4>
+                <p className="mb-0 small">Team Members</p>
               </div>
             </div>
           </div>
@@ -337,11 +461,24 @@ export default function LeaveRequests() {
                     <tbody>
                       {paginatedRequests.map(req => {
                         const daysDiff = getDurationInDays(req.startDate, req.endDate)
+                        const urgent = isUrgent(req)
+                        const canApproveRequest = canApprove(req)
+                        
                         return (
-                          <tr key={req.id}>
+                          <tr key={req.id} className={urgent ? 'table-warning' : ''}>
                             <td>
-                              <div className="fw-semibold">{req.staffName}</div>
-                              <small className="text-muted">{req.department}</small>
+                              <div className="fw-semibold">
+                                {req.staffName}
+                                {urgent && (
+                                  <span className="badge bg-danger ms-2">
+                                    <i className="fas fa-exclamation-triangle me-1"></i>
+                                    Urgent
+                                  </span>
+                                )}
+                              </div>
+                              <small className="text-muted">
+                                {allUsers[req.staffId]?.jobTitle || req.department}
+                              </small>
                             </td>
                             <td>
                               <span className={`badge bg-light text-dark ${getTypeColor(req.type)}`}>
@@ -376,13 +513,33 @@ export default function LeaveRequests() {
                               <small className="text-muted">{new Date(req.requestDate).toLocaleTimeString()}</small>
                             </td>
                             <td>
-                              <button 
-                                className="btn btn-outline-primary btn-sm"
-                                onClick={() => setSelectedRequest(req)}
-                              >
-                                <i className="fas fa-eye me-1"></i>
-                                Review
-                              </button>
+                              <div className="d-flex gap-1">
+                                <button 
+                                  className="btn btn-outline-primary btn-sm"
+                                  onClick={() => setSelectedRequest(req)}
+                                >
+                                  <i className="fas fa-eye me-1"></i>
+                                  Review
+                                </button>
+                                {canApproveRequest && (
+                                  <>
+                                    <button 
+                                      className="btn btn-success btn-sm"
+                                      onClick={() => handleProcess(req.id, 'approved')}
+                                      title="Quick Approve"
+                                    >
+                                      <i className="fas fa-check"></i>
+                                    </button>
+                                    <button 
+                                      className="btn btn-danger btn-sm"
+                                      onClick={() => handleProcess(req.id, 'rejected')}
+                                      title="Quick Reject"
+                                    >
+                                      <i className="fas fa-times"></i>
+                                    </button>
+                                  </>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         )
@@ -418,7 +575,7 @@ export default function LeaveRequests() {
                           </button>
                         </li>
                         
-                        {/* Page numbers */}
+                        {/* Page numbers - simplified for space */}
                         {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                           let pageNum;
                           if (totalPages <= 5) {
@@ -470,7 +627,7 @@ export default function LeaveRequests() {
           </div>
         </div>
 
-        {/* Simplified Review Modal */}
+        {/* Review Modal */}
         {selectedRequest && (
           <div className="modal show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
             <div className="modal-dialog modal-lg">
@@ -479,6 +636,12 @@ export default function LeaveRequests() {
                   <h5 className="modal-title">
                     <i className="fas fa-calendar-check me-2"></i>
                     Review Leave Request
+                    {isUrgent(selectedRequest) && (
+                      <span className="badge bg-danger ms-2">
+                        <i className="fas fa-exclamation-triangle me-1"></i>
+                        Urgent
+                      </span>
+                    )}
                   </h5>
                   <button 
                     type="button" 
@@ -490,7 +653,12 @@ export default function LeaveRequests() {
                   <div className="row g-3">
                     <div className="col-md-6">
                       <label className="form-label fw-bold">Employee</label>
-                      <div className="p-2 bg-light rounded">{selectedRequest.staffName}</div>
+                      <div className="p-2 bg-light rounded">
+                        {selectedRequest.staffName}
+                        <div className="text-muted small">
+                          {allUsers[selectedRequest.staffId]?.jobTitle || selectedRequest.department}
+                        </div>
+                      </div>
                     </div>
                     <div className="col-md-6">
                       <label className="form-label fw-bold">Department</label>
@@ -530,6 +698,25 @@ export default function LeaveRequests() {
                         {new Date(selectedRequest.requestDate).toLocaleDateString()}
                       </div>
                     </div>
+                    {selectedRequest.processedDate && (
+                      <>
+                        <div className="col-md-6">
+                          <label className="form-label fw-bold">Processed By</label>
+                          <div className="p-2 bg-light rounded">
+                            {allUsers[selectedRequest.processedBy] ? 
+                              `${getFullName(allUsers[selectedRequest.processedBy])}` : 
+                              'Unknown'
+                            }
+                          </div>
+                        </div>
+                        <div className="col-md-6">
+                          <label className="form-label fw-bold">Processed On</label>
+                          <div className="p-2 bg-light rounded">
+                            {new Date(selectedRequest.processedDate).toLocaleDateString()}
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="modal-footer">
@@ -541,7 +728,7 @@ export default function LeaveRequests() {
                     <i className="fas fa-times me-1"></i>
                     Close
                   </button>
-                  {selectedRequest.status === 'pending' && (
+                  {canApprove(selectedRequest) && (
                     <>
                       <button 
                         type="button" 

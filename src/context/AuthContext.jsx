@@ -1,6 +1,16 @@
+// src/context/AuthContext.jsx - Updated for hierarchical leave approvals
+
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { seedUsers, seedLeaveRequests, seedClockActivities, getFullName } from '../config/seedUsers'
+import { 
+  seedUsers, 
+  seedLeaveRequests, 
+  seedClockActivities, 
+  getFullName,
+  canApproveLeave,
+  getDirectReports,
+  getUserManager
+} from '../config/seedUsers'
 
 const AuthContext = createContext()
 
@@ -81,7 +91,7 @@ export function AuthProvider({ children }) {
     navigate('/staff', { replace: true })
   }
 
-  // Helper function to generate OTP
+  // Helper function to generate OTP (unchanged)
   const generateOTP = (email, type) => {
     const otp = Math.floor(100000 + Math.random() * 900000).toString()
     const expires = Date.now() + 300000 // 5 minutes
@@ -133,7 +143,7 @@ export function AuthProvider({ children }) {
     // Update password in allUsers
     setAllUsers(prev => ({
       ...prev,
-      [email]: { ...prev[email], password: newPassword }
+      [email]: { ...prev[email], password: newPassword, updatedAt: new Date().toISOString() }
     }))
 
     // Remove used OTP
@@ -179,7 +189,11 @@ export function AuthProvider({ children }) {
     // Mark user as verified
     setAllUsers(prev => ({
       ...prev,
-      [email]: { ...prev[email], verified: true }
+      [email]: { 
+        ...prev[email], 
+        verified: true,
+        updatedAt: new Date().toISOString()
+      }
     }))
     
     // Remove used OTP
@@ -193,63 +207,84 @@ export function AuthProvider({ children }) {
   }
 
   const clockIn = () => {
+    const timestamp = new Date().toISOString()
     const activity = {
       id: `ca_${Date.now()}`,
       staffId: user.email,
       staffName: getFullName(user),
       department: user.department,
       action: 'clock_in', 
-      timestamp: new Date().toISOString(),
-      location: 'Office',
-      notes: ''
+      timestamp,
+      location: user.assignedLocation || 'Main Office', // Use assigned location for security guards
+      createdAt: timestamp
     }
     setClockActivities(prev => [activity, ...prev])
-    setUser(prev => ({ ...prev, isClockedIn: true }))
+    setUser(prev => ({ ...prev, isClockedIn: true, updatedAt: timestamp }))
     
     setAllUsers(prev => ({
       ...prev,
-      [user.email]: { ...prev[user.email], isClockedIn: true }
+      [user.email]: { 
+        ...prev[user.email], 
+        isClockedIn: true,
+        updatedAt: timestamp
+      }
     }))
   }
 
   const clockOut = () => {
+    const timestamp = new Date().toISOString()
     const activity = {
       id: `ca_${Date.now()}`,
       staffId: user.email,
       staffName: getFullName(user),
       department: user.department,
       action: 'clock_out',
-      timestamp: new Date().toISOString(), 
-      location: 'Office',
-      notes: ''
+      timestamp,
+      location: user.assignedLocation || 'Main Office',
+      createdAt: timestamp
     }
     setClockActivities(prev => [activity, ...prev])
-    setUser(prev => ({ ...prev, isClockedIn: false }))
+    setUser(prev => ({ ...prev, isClockedIn: false, updatedAt: timestamp }))
     
     setAllUsers(prev => ({
       ...prev,
-      [user.email]: { ...prev[user.email], isClockedIn: false }
+      [user.email]: { 
+        ...prev[user.email], 
+        isClockedIn: false,
+        updatedAt: timestamp
+      }
     }))
   }
 
-const submitLeaveRequest = (requestData) => {
+  // Enhanced leave request submission with proper hierarchy
+  const submitLeaveRequest = (requestData) => {
+    const timestamp = new Date().toISOString()
+    const userManager = getUserManager(user.email)
+    
+    if (!userManager) {
+      throw new Error('No manager assigned. Cannot submit leave request.')
+    }
+
     const newRequest = {
       id: `lr_${Date.now()}`,
       staffId: user.email,
       staffName: getFullName(user),
       department: user.department,
-      manager: user.manager,
+      manager: userManager,
       ...requestData,
       status: 'pending',
-      requestDate: new Date().toISOString(),
+      requestDate: timestamp,
       processedBy: null,
-      processedDate: null
+      processedDate: null,
+      createdAt: timestamp,
+      updatedAt: timestamp
     }
     setLeaveRequests(prev => [newRequest, ...prev])
     return newRequest
   }
 
   const updateLeaveRequest = (requestId, updatedData) => {
+    const timestamp = new Date().toISOString()
     setLeaveRequests(prev => prev.map(req => 
       req.id === requestId 
         ? { 
@@ -258,40 +293,61 @@ const submitLeaveRequest = (requestData) => {
             // Reset processing info when edited
             status: 'pending',
             processedBy: null,
-            processedDate: null
+            processedDate: null,
+            updatedAt: timestamp
           }
         : req
     ))
   }
 
+  // Enhanced leave request processing with hierarchy validation
   const processLeaveRequest = (requestId, status) => {
+    const request = leaveRequests.find(req => req.id === requestId)
+    if (!request) {
+      throw new Error('Leave request not found')
+    }
+
+    // Validate that current user can approve this request
+    if (!canApproveLeave(user.email, request.staffId)) {
+      throw new Error('You are not authorized to process this leave request')
+    }
+
+    const timestamp = new Date().toISOString()
     setLeaveRequests(prev => prev.map(req => 
       req.id === requestId 
         ? { 
             ...req, 
             status,
             processedBy: user.email,
-            processedDate: new Date().toISOString()
+            processedDate: timestamp,
+            updatedAt: timestamp
           }
         : req
     ))
+
+    console.log(`Leave request ${requestId} ${status} by ${getFullName(user)}`)
   }
 
+  // Enhanced staff registration with proper timestamps
   const registerStaff = (staffData) => {
     const email = staffData.email
     const defaultPassword = 'Welcome123!'
+    const timestamp = new Date().toISOString()
     
     const newUser = {
+      id: `usr_${Date.now()}`,
       ...staffData,
+      email,
       password: defaultPassword,
       verified: false, // User needs to verify
       isActive: true,
       createdBy: user.email,
-      createdAt: new Date().toISOString(),
+      createdAt: timestamp,
+      updatedAt: timestamp,
       isClockedIn: false
     }
     
-    // Add directly to allUsers (no longer using pendingUsers)
+    // Add directly to allUsers
     setAllUsers(prev => ({
       ...prev,
       [email]: newUser
@@ -306,10 +362,49 @@ const submitLeaveRequest = (requestData) => {
   }
 
   const updateStaff = (email, updates) => {
+    const timestamp = new Date().toISOString()
     setAllUsers(prev => ({
       ...prev,
-      [email]: { ...prev[email], ...updates }
+      [email]: { 
+        ...prev[email], 
+        ...updates,
+        updatedAt: timestamp
+      }
     }))
+  }
+
+  // Helper functions for hierarchical operations
+  const getMyDirectReports = () => {
+    if (!user?.isManager) return []
+    return getDirectReports(user.email)
+  }
+
+  const getMyLeaveRequests = () => {
+    return leaveRequests.filter(req => req.staffId === user.email)
+  }
+
+  const getPendingLeaveRequestsForApproval = () => {
+    if (!user?.isManager) return []
+    return leaveRequests.filter(req => 
+      req.status === 'pending' && 
+      canApproveLeave(user.email, req.staffId)
+    )
+  }
+
+  const getMyTeamClockActivities = () => {
+    if (!user?.isManager) return []
+    const teamEmails = getDirectReports(user.email).map(member => member.email)
+    teamEmails.push(user.email) // Include manager's own activities
+    return clockActivities.filter(activity => teamEmails.includes(activity.staffId))
+  }
+
+  // Security-specific functions
+  const getLocationClockActivities = (location) => {
+    if (user?.role !== 'security') return []
+    return clockActivities.filter(activity => 
+      activity.location === location ||
+      (location === 'all' && true) // Security can see all if needed
+    )
   }
 
   const isOnManager = location.pathname.startsWith('/manager')
@@ -333,7 +428,13 @@ const submitLeaveRequest = (requestData) => {
     updateLeaveRequest,
     processLeaveRequest,
     registerStaff,
-    updateStaff
+    updateStaff,
+    // New hierarchical helper functions
+    getMyDirectReports,
+    getMyLeaveRequests,
+    getPendingLeaveRequestsForApproval,
+    getMyTeamClockActivities,
+    getLocationClockActivities
   }),[user, isOnManager, leaveRequests, clockActivities, allUsers, activeOTPs])
   
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
