@@ -12,6 +12,19 @@ export default function Layout({ children, variant }) {
 
   const computedVariant = variant || (isOnManager ? 'manager' : 'staff')
 
+  // Get role display name - same logic as in Sidebar
+  const getRoleDisplayName = () => {
+    if (computedVariant === 'manager') return 'Manager'
+    
+    const roleNames = {
+      staff: 'Staff',
+      admin: 'Admin',
+      security: 'Security',
+      ceo: 'Executive'
+    }
+    return roleNames[user?.role] || 'Menu'
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar-fixed">
@@ -23,7 +36,8 @@ export default function Layout({ children, variant }) {
 
         <Offcanvas placement="end" show={show} onHide={() => setShow(false)} className="bg-dark text-white">
           <Offcanvas.Header closeButton closeVariant="white">
-            <Offcanvas.Title>{computedVariant === 'manager' ? 'Manager' : user?.role?.charAt(0).toUpperCase() + user?.role?.slice(1) || 'Menu'}</Offcanvas.Title>
+            {/* Use consistent role styling instead of Offcanvas.Title */}
+            <div className="sidebar-role-mobile">{getRoleDisplayName()}</div>
           </Offcanvas.Header>
           <Offcanvas.Body>
             <Sidebar variant={computedVariant} />

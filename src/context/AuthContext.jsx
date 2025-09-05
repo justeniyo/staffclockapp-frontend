@@ -232,7 +232,7 @@ export function AuthProvider({ children }) {
     }))
   }
 
-  const submitLeaveRequest = (requestData) => {
+const submitLeaveRequest = (requestData) => {
     const newRequest = {
       id: `lr_${Date.now()}`,
       staffId: user.email,
@@ -243,20 +243,33 @@ export function AuthProvider({ children }) {
       status: 'pending',
       requestDate: new Date().toISOString(),
       processedBy: null,
-      processedDate: null,
-      notes: ''
+      processedDate: null
     }
     setLeaveRequests(prev => [newRequest, ...prev])
     return newRequest
   }
 
-  const processLeaveRequest = (requestId, status, notes = '') => {
+  const updateLeaveRequest = (requestId, updatedData) => {
     setLeaveRequests(prev => prev.map(req => 
       req.id === requestId 
         ? { 
             ...req, 
-            status, 
-            notes,
+            ...updatedData,
+            // Reset processing info when edited
+            status: 'pending',
+            processedBy: null,
+            processedDate: null
+          }
+        : req
+    ))
+  }
+
+  const processLeaveRequest = (requestId, status) => {
+    setLeaveRequests(prev => prev.map(req => 
+      req.id === requestId 
+        ? { 
+            ...req, 
+            status,
             processedBy: user.email,
             processedDate: new Date().toISOString()
           }
@@ -317,6 +330,7 @@ export function AuthProvider({ children }) {
     allUsers,
     activeOTPs,
     submitLeaveRequest,
+    updateLeaveRequest,
     processLeaveRequest,
     registerStaff,
     updateStaff

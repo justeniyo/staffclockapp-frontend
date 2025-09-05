@@ -91,7 +91,7 @@ export const seedUsers = {
   }
 }
 
-// Sample leave requests (updated with new name structure)
+// Sample leave requests (simplified - no reason/notes)
 export const seedLeaveRequests = [
   {
     id: "lr_001",
@@ -102,12 +102,10 @@ export const seedLeaveRequests = [
     type: "Annual",
     startDate: "2025-09-15",
     endDate: "2025-09-17", 
-    reason: "Family vacation to celebrate anniversary",
     status: "pending",
     requestDate: "2025-09-01T10:30:00Z",
     processedBy: null,
-    processedDate: null,
-    notes: ""
+    processedDate: null
   },
   {
     id: "lr_002",
@@ -118,12 +116,10 @@ export const seedLeaveRequests = [
     type: "Sick",
     startDate: "2025-08-28",
     endDate: "2025-08-30", 
-    reason: "Medical appointment and recovery",
     status: "approved",
     requestDate: "2025-08-27T08:15:00Z",
     processedBy: "it.manager@company.com",
-    processedDate: "2025-08-27T14:20:00Z",
-    notes: "Hope you feel better soon. Take care of yourself."
+    processedDate: "2025-08-27T14:20:00Z"
   },
   {
     id: "lr_003",
@@ -134,12 +130,10 @@ export const seedLeaveRequests = [
     type: "Personal",
     startDate: "2025-09-20",
     endDate: "2025-09-20", 
-    reason: "Child's school event",
     status: "rejected",
     requestDate: "2025-09-02T16:45:00Z",
     processedBy: "sales.manager@company.com",
-    processedDate: "2025-09-02T18:30:00Z",
-    notes: "Important client meeting scheduled. Can we reschedule?"
+    processedDate: "2025-09-02T18:30:00Z"
   },
   {
     id: "lr_004",
@@ -150,12 +144,10 @@ export const seedLeaveRequests = [
     type: "Emergency",
     startDate: "2025-09-05",
     endDate: "2025-09-06", 
-    reason: "Family emergency - immediate attention required",
     status: "approved",
     requestDate: "2025-09-04T22:10:00Z",
     processedBy: "hr.manager@company.com",
-    processedDate: "2025-09-05T07:00:00Z",
-    notes: "Approved immediately. Please keep us updated."
+    processedDate: "2025-09-05T07:00:00Z"
   }
 ]
 
