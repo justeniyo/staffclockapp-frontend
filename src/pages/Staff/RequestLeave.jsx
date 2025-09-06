@@ -1,18 +1,8 @@
-// src/pages/Staff/RequestLeave.jsx - Updated for hierarchical structure
-
 import { useState, useMemo } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import { getFullName } from '../../config/seedUsers'
 
 export default function RequestLeave() {
-  const { 
-    submitLeaveRequest, 
-    updateLeaveRequest, 
-    getMyLeaveRequests,
-    user,
-    allUsers 
-  } = useAuth()
-  
+  const { submitLeaveRequest, updateLeaveRequest, leaveRequests, user } = useAuth()
   const [formData, setFormData] = useState({
     type: 'Annual',
     startDate: '',
@@ -25,8 +15,7 @@ export default function RequestLeave() {
 
   const ANNUAL_LEAVE_LIMIT = 18 // days per year
 
-  const myRequests = getMyLeaveRequests()
-  const managerInfo = user.manager ? allUsers[user.manager] : null
+  const myRequests = leaveRequests.filter(req => req.staffId === user.email)
 
   // Calculate annual leave usage for current year
   const annualLeaveStats = useMemo(() => {
@@ -87,19 +76,14 @@ export default function RequestLeave() {
         throw new Error('End date must be after start date')
       }
 
-      // Check if user has a manager to approve the request
-      if (!user.manager) {
-        throw new Error('No manager assigned. Please contact HR to assign a manager before submitting leave requests.')
-      }
-
       // Check annual leave limit
       if (!validateAnnualLeaveRequest(formData.type, formData.startDate, formData.endDate)) {
         const requestDays = getDaysDifference(formData.startDate, formData.endDate)
         throw new Error(`This request would exceed your annual leave limit. You have ${annualLeaveStats.remaining} days remaining, but requested ${requestDays} days.`)
       }
 
-      const newRequest = submitLeaveRequest(formData)
-      setSuccess(`Leave request submitted successfully! Your ${formData.type.toLowerCase()} leave request will be reviewed by ${getFullName(managerInfo)}.`)
+      submitLeaveRequest(formData)
+      setSuccess('Leave request submitted successfully!')
       setFormData({
         type: 'Annual',
         startDate: '',
@@ -147,7 +131,7 @@ export default function RequestLeave() {
       updateLeaveRequest(editingRequest, editForm)
       setEditingRequest(null)
       setEditForm({})
-      setSuccess('Leave request updated successfully! Your manager will review the updated request.')
+      setSuccess('Leave request updated successfully!')
       setError('')
     } catch (err) {
       setError(err.message)
@@ -216,32 +200,10 @@ export default function RequestLeave() {
     return !validateAnnualLeaveRequest(editForm.type, editForm.startDate, editForm.endDate, editingRequest)
   }, [editForm, editingRequest, annualLeaveStats])
 
-  // Get approval chain information
-  const getApprovalChain = () => {
-    if (!managerInfo) return null
-    
-    const chain = [{ name: getFullName(managerInfo), role: managerInfo.jobTitle || 'Manager', email: managerInfo.email }]
-    
-    // If manager also has a manager (for department managers), show the chain
-    if (managerInfo.manager && allUsers[managerInfo.manager]) {
-      const upperManager = allUsers[managerInfo.manager]
-      chain.push({ 
-        name: getFullName(upperManager), 
-        role: upperManager.jobTitle || 'Executive', 
-        email: upperManager.email 
-      })
-    }
-    
-    return chain
-  }
-
-  const approvalChain = getApprovalChain()
-
   return (
     <div>
       <div className="page-header">
         <h2 className="page-title">Request Leave</h2>
-        <p className="mb-0">Submit and manage your leave requests</p>
       </div>
       
       <div className="page-content">
@@ -288,50 +250,6 @@ export default function RequestLeave() {
           </div>
         </div>
 
-        {/* Approval Information */}
-        {approvalChain && (
-          <div className="row g-3 mb-4">
-            <div className="col-12">
-              <div className="card">
-                <div className="card-header header-light">
-                  <h6 className="mb-0">
-                    <i className="fas fa-route me-2"></i>
-                    Approval Process
-                  </h6>
-                </div>
-                <div className="card-body">
-                  <div className="d-flex align-items-center">
-                    <div className="text-muted me-3">
-                      <i className="fas fa-user me-1"></i>
-                      You
-                    </div>
-                    <div className="flex-grow-1">
-                      {approvalChain.map((approver, index) => (
-                        <span key={approver.email} className="d-inline-flex align-items-center">
-                          <i className="fas fa-arrow-right text-muted mx-2"></i>
-                          <span className="badge bg-primary me-1">
-                            {index + 1}
-                          </span>
-                          <div className="d-inline-block">
-                            <div className="fw-semibold">{approver.name}</div>
-                            <small className="text-muted">{approver.role}</small>
-                          </div>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="mt-2">
-                    <small className="text-muted">
-                      <i className="fas fa-info-circle me-1"></i>
-                      Your leave request will be sent to <strong>{approvalChain[0].name}</strong> for approval.
-                    </small>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
         <div className="row g-4">
           <div className="col-lg-6">
             <div className="card">
@@ -342,109 +260,101 @@ export default function RequestLeave() {
                 </h5>
               </div>
               <div className="card-body">
-                {!user.manager ? (
-                  <div className="alert alert-warning">
-                    <i className="fas fa-exclamation-triangle me-2"></i>
-                    <strong>No Manager Assigned</strong><br/>
-                    You cannot submit leave requests without a manager assigned. Please contact HR to resolve this issue.
+                <form onSubmit={handleSubmit}>
+                  <div className="mb-3">
+                    <label className="form-label">
+                      <i className="fas fa-tag me-1"></i>
+                      Leave Type
+                    </label>
+                    <select 
+                      className="form-select" 
+                      name="type" 
+                      value={formData.type}
+                      onChange={handleChange}
+                      required
+                    >
+                      <option value="Annual">{getLeaveTypeDescription('Annual')}</option>
+                      <option value="Sick">{getLeaveTypeDescription('Sick')}</option>
+                      <option value="Personal">{getLeaveTypeDescription('Personal')}</option>
+                      <option value="Emergency">{getLeaveTypeDescription('Emergency')}</option>
+                    </select>
+                    {formData.type === 'Annual' && annualLeaveStats.remaining <= 5 && (
+                      <div className={`mt-2 p-2 rounded ${annualLeaveStats.remaining === 0 ? 'bg-danger text-white' : 'bg-warning'}`}>
+                        <i className="fas fa-exclamation-triangle me-1"></i>
+                        {annualLeaveStats.remaining === 0 
+                          ? 'No annual leave days remaining!'
+                          : `Only ${annualLeaveStats.remaining} annual leave days remaining.`
+                        }
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <form onSubmit={handleSubmit}>
-                    <div className="mb-3">
+                  
+                  <div className="row g-3">
+                    <div className="col-md-6">
                       <label className="form-label">
-                        <i className="fas fa-tag me-1"></i>
-                        Leave Type
+                        <i className="fas fa-play me-1"></i>
+                        Start Date
                       </label>
-                      <select 
-                        className="form-select" 
-                        name="type" 
-                        value={formData.type}
+                      <input 
+                        type="date" 
+                        className="form-control"
+                        name="startDate"
+                        value={formData.startDate}
                         onChange={handleChange}
+                        min={new Date().toISOString().split('T')[0]}
                         required
-                      >
-                        <option value="Annual">{getLeaveTypeDescription('Annual')}</option>
-                        <option value="Sick">{getLeaveTypeDescription('Sick')}</option>
-                        <option value="Personal">{getLeaveTypeDescription('Personal')}</option>
-                        <option value="Emergency">{getLeaveTypeDescription('Emergency')}</option>
-                      </select>
-                      {formData.type === 'Annual' && annualLeaveStats.remaining <= 5 && (
-                        <div className={`mt-2 p-2 rounded ${annualLeaveStats.remaining === 0 ? 'bg-danger text-white' : 'bg-warning'}`}>
+                      />
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label">
+                        <i className="fas fa-stop me-1"></i>
+                        End Date
+                      </label>
+                      <input 
+                        type="date" 
+                        className="form-control"
+                        name="endDate"
+                        value={formData.endDate}
+                        onChange={handleChange}
+                        min={formData.startDate || new Date().toISOString().split('T')[0]}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* Duration preview */}
+                  {formData.startDate && formData.endDate && (
+                    <div className={`mt-3 p-3 rounded ${currentRequestExceedsLimit ? 'bg-danger text-white' : 'bg-light'}`}>
+                      <div className="d-flex justify-content-between align-items-center">
+                        <span className={currentRequestExceedsLimit ? 'text-white' : 'text-muted'}>
+                          <i className="fas fa-calendar-day me-1"></i>
+                          Duration:
+                        </span>
+                        <span className={`badge ${currentRequestExceedsLimit ? 'bg-white text-danger' : 'bg-info'}`}>
+                          {getDaysDifference(formData.startDate, formData.endDate)} day(s)
+                        </span>
+                      </div>
+                      {currentRequestExceedsLimit && (
+                        <div className="mt-2">
                           <i className="fas fa-exclamation-triangle me-1"></i>
-                          {annualLeaveStats.remaining === 0 
-                            ? 'No annual leave days remaining!'
-                            : `Only ${annualLeaveStats.remaining} annual leave days remaining.`
-                          }
+                          Exceeds available annual leave days!
                         </div>
                       )}
                     </div>
-                    
-                    <div className="row g-3">
-                      <div className="col-md-6">
-                        <label className="form-label">
-                          <i className="fas fa-play me-1"></i>
-                          Start Date
-                        </label>
-                        <input 
-                          type="date" 
-                          className="form-control"
-                          name="startDate"
-                          value={formData.startDate}
-                          onChange={handleChange}
-                          min={new Date().toISOString().split('T')[0]}
-                          required
-                        />
-                      </div>
-                      <div className="col-md-6">
-                        <label className="form-label">
-                          <i className="fas fa-stop me-1"></i>
-                          End Date
-                        </label>
-                        <input 
-                          type="date" 
-                          className="form-control"
-                          name="endDate"
-                          value={formData.endDate}
-                          onChange={handleChange}
-                          min={formData.startDate || new Date().toISOString().split('T')[0]}
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    {/* Duration preview */}
-                    {formData.startDate && formData.endDate && (
-                      <div className={`mt-3 p-3 rounded ${currentRequestExceedsLimit ? 'bg-danger text-white' : 'bg-light'}`}>
-                        <div className="d-flex justify-content-between align-items-center">
-                          <span className={currentRequestExceedsLimit ? 'text-white' : 'text-muted'}>
-                            <i className="fas fa-calendar-day me-1"></i>
-                            Duration:
-                          </span>
-                          <span className={`badge ${currentRequestExceedsLimit ? 'bg-white text-danger' : 'bg-info'}`}>
-                            {getDaysDifference(formData.startDate, formData.endDate)} day(s)
-                          </span>
-                        </div>
-                        {currentRequestExceedsLimit && (
-                          <div className="mt-2">
-                            <i className="fas fa-exclamation-triangle me-1"></i>
-                            Exceeds available annual leave days!
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    
-                    {error && <div className="alert alert-danger py-2 mt-3">{error}</div>}
-                    {success && <div className="alert alert-success py-2 mt-3">{success}</div>}
-                    
-                    <button 
-                      type="submit" 
-                      className="btn btn-warning w-100 mt-3"
-                      disabled={formData.type === 'Annual' && annualLeaveStats.remaining === 0}
-                    >
-                      <i className="fas fa-paper-plane me-2"></i>
-                      Submit Request
-                    </button>
-                  </form>
-                )}
+                  )}
+                  
+                  {error && <div className="alert alert-danger py-2 mt-3">{error}</div>}
+                  {success && <div className="alert alert-success py-2 mt-3">{success}</div>}
+                  
+                  <button 
+                    type="submit" 
+                    className="btn btn-warning w-100 mt-3"
+                    disabled={formData.type === 'Annual' && annualLeaveStats.remaining === 0}
+                  >
+                    <i className="fas fa-paper-plane me-2"></i>
+                    Submit Request
+                  </button>
+                </form>
               </div>
             </div>
           </div>
@@ -454,7 +364,7 @@ export default function RequestLeave() {
               <div className="card-header">
                 <h5 className="mb-0">
                   <i className="fas fa-list me-2"></i>
-                  My Leave Requests ({myRequests.length})
+                  My Leave Requests
                 </h5>
               </div>
               <div className="card-body">
@@ -462,10 +372,9 @@ export default function RequestLeave() {
                   <div className="text-center py-4">
                     <i className="fas fa-calendar-times fa-3x text-muted mb-3"></i>
                     <p className="text-muted">No leave requests yet.</p>
-                    <small className="text-muted">Submit your first leave request using the form on the left.</small>
                   </div>
                 ) : (
-                  <div className="space-y-3" style={{ maxHeight: '600px', overflowY: 'auto' }}>
+                  <div className="space-y-3">
                     {myRequests.map(req => (
                       <div key={req.id} className="border rounded p-3 mb-3">
                         {editingRequest === req.id ? (
@@ -599,15 +508,6 @@ export default function RequestLeave() {
                                 </span>
                               )}
                             </div>
-                            
-                            {req.status === 'pending' && managerInfo && (
-                              <div className="mt-2 p-2 bg-light rounded">
-                                <small className="text-muted">
-                                  <i className="fas fa-user-tie me-1"></i>
-                                  Awaiting approval from <strong>{getFullName(managerInfo)}</strong>
-                                </small>
-                              </div>
-                            )}
                           </div>
                         )}
                       </div>
