@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import { getFullName } from '../../config/seedUsers'
+import { getFullName, getUserById } from '../../config/seedUsers'
 
 export default function ManageStaff(){
   const { allUsers, updateStaff } = useAuth()
@@ -22,20 +22,31 @@ export default function ManageStaff(){
 
   const departments = [...new Set(Object.values(allUsers).map(user => user.department).filter(Boolean))]
   const managers = Object.entries(allUsers).filter(([email, user]) => 
-    user.isManager && user.role === 'staff'
+    user.isManager && user.isActive
   )
+
+  // Convert allUsers object to array with computed fields
+  const usersArray = useMemo(() => {
+    return Object.entries(allUsers)
+      .filter(([email, user]) => user.role !== 'system')
+      .map(([email, user]) => ({ 
+        ...user, 
+        email, 
+        staffName: getFullName(user),
+        managerName: user.managerId ? getFullName(getUserById(user.managerId)) : 'None'
+      }))
+  }, [allUsers])
 
   // Advanced filtering and sorting
   const filteredAndSortedStaff = useMemo(() => {
-    let filtered = Object.entries(allUsers)
-      .filter(([email, user]) => user.role !== 'system')
-      .map(([email, user]) => ({ ...user, email, staffName: getFullName(user) }))
+    let filtered = usersArray
 
     // Apply filters
     if (filters.search) {
       filtered = filtered.filter(user => 
         user.staffName.toLowerCase().includes(filters.search.toLowerCase()) ||
-        user.email.toLowerCase().includes(filters.search.toLowerCase())
+        user.email.toLowerCase().includes(filters.search.toLowerCase()) ||
+        user.jobTitle?.toLowerCase().includes(filters.search.toLowerCase())
       )
     }
 
@@ -48,7 +59,7 @@ export default function ManageStaff(){
     }
 
     if (filters.manager) {
-      filtered = filtered.filter(user => user.manager === filters.manager)
+      filtered = filtered.filter(user => user.managerId === filters.manager)
     }
 
     if (filters.status !== 'all') {
@@ -62,6 +73,8 @@ export default function ManageStaff(){
         filtered = filtered.filter(user => user.isActive === false)
       } else if (filters.status === 'clocked_in') {
         filtered = filtered.filter(user => user.isClockedIn === true)
+      } else if (filters.status === 'managers') {
+        filtered = filtered.filter(user => user.isManager === true)
       }
     }
 
@@ -89,7 +102,7 @@ export default function ManageStaff(){
     })
 
     return sorted
-  }, [allUsers, filters, sortConfig])
+  }, [usersArray, filters, sortConfig])
 
   // Pagination
   const totalPages = Math.ceil(filteredAndSortedStaff.length / itemsPerPage)
@@ -114,10 +127,38 @@ export default function ManageStaff(){
 
   const startEdit = (user) => {
     setEditingUser(user.email)
-    setEditForm({...user})
+    setEditForm({
+      firstName: user.firstName,
+      lastName: user.lastName,
+      department: user.department,
+      jobTitle: user.jobTitle || '',
+      role: user.role,
+      isManager: user.isManager,
+      managerId: user.managerId || '',
+      isActive: user.isActive,
+      verified: user.verified
+    })
   }
 
   const saveEdit = () => {
+    const userToUpdate = allUsers[editingUser]
+    
+    // Validation
+    if (editForm.role === 'ceo' && editForm.managerId) {
+      alert('CEO cannot have a manager')
+      return
+    }
+    
+    if ((editForm.role === 'admin' || editForm.role === 'security') && editForm.isManager) {
+      alert(`${editForm.role} cannot be a manager`)
+      return
+    }
+    
+    if (editForm.role !== 'ceo' && !editForm.managerId) {
+      alert('Manager selection is required for non-CEO roles')
+      return
+    }
+
     updateStaff(editingUser, editForm)
     setEditingUser(null)
     setEditForm({})
@@ -154,18 +195,111 @@ export default function ManageStaff(){
     return sortConfig.direction === 'asc' ? 'fas fa-sort-up text-primary' : 'fas fa-sort-down text-primary'
   }
 
+  const getStatusIcon = (user) => {
+    if (!user.isActive) return { icon: 'fa-user-slash', color: 'text-danger', text: 'Inactive' }
+    if (!user.verified) return { icon: 'fa-user-clock', color: 'text-warning', text: 'Unverified' }
+    if (user.isClockedIn) return { icon: 'fa-user-check', color: 'text-success', text: 'Active' }
+    return { icon: 'fa-user', color: 'text-secondary', text: 'Offline' }
+  }
+
+  // Get potential managers for editing
+  const getPotentialManagers = (role, department) => {
+    const usersList = Object.values(allUsers)
+    
+    if (role === 'ceo') return []
+    
+    if (role === 'admin' || role === 'security') {
+      return usersList.filter(user => 
+        (user.role === 'admin' || user.role === 'ceo') && 
+        user.isActive
+      )
+    }
+    
+    if (department) {
+      const departmentManagers = usersList.filter(user => 
+        user.department === department &&
+        user.isManager && 
+        user.role === 'staff' &&
+        user.isActive
+      )
+      
+      if (departmentManagers.length > 0) {
+        return departmentManagers
+      }
+    }
+    
+    return usersList.filter(user => 
+      user.isManager && user.isActive
+    )
+  }
+
+  // Statistics
+  const stats = useMemo(() => {
+    return {
+      total: usersArray.length,
+      active: usersArray.filter(u => u.isActive).length,
+      managers: usersArray.filter(u => u.isManager).length,
+      unverified: usersArray.filter(u => !u.verified).length,
+      clockedIn: usersArray.filter(u => u.isClockedIn).length
+    }
+  }, [usersArray])
+
   return (
     <div>
       <div className="page-header">
         <div className="d-flex justify-content-between align-items-center">
           <div>
             <h2 className="page-title">Manage Staff</h2>
-            <p className="mb-0 text-muted">Showing {filteredAndSortedStaff.length} of {Object.keys(allUsers).length - 1} staff members</p>
+            <p className="mb-0 text-muted">Showing {filteredAndSortedStaff.length} of {usersArray.length} staff members</p>
           </div>
         </div>
       </div>
       
       <div className="page-content">
+        {/* Statistics Cards */}
+        <div className="row g-3 mb-4">
+          <div className="col-md-2">
+            <div className="card text-center">
+              <div className="card-body">
+                <h4 className="text-primary">{stats.total}</h4>
+                <p className="mb-0 small">Total Staff</p>
+              </div>
+            </div>
+          </div>
+          <div className="col-md-2">
+            <div className="card text-center">
+              <div className="card-body">
+                <h4 className="text-success">{stats.active}</h4>
+                <p className="mb-0 small">Active</p>
+              </div>
+            </div>
+          </div>
+          <div className="col-md-2">
+            <div className="card text-center">
+              <div className="card-body">
+                <h4 className="text-info">{stats.managers}</h4>
+                <p className="mb-0 small">Managers</p>
+              </div>
+            </div>
+          </div>
+          <div className="col-md-2">
+            <div className="card text-center">
+              <div className="card-body">
+                <h4 className="text-warning">{stats.unverified}</h4>
+                <p className="mb-0 small">Unverified</p>
+              </div>
+            </div>
+          </div>
+          <div className="col-md-2">
+            <div className="card text-center">
+              <div className="card-body">
+                <h4 className="text-secondary">{stats.clockedIn}</h4>
+                <p className="mb-0 small">Clocked In</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Enhanced Filters */}
         <div className="card mb-4">
           <div className="card-header">
@@ -191,7 +325,7 @@ export default function ManageStaff(){
                     className="form-control"
                     value={filters.search}
                     onChange={(e) => handleFilterChange({...filters, search: e.target.value})}
-                    placeholder="Name or email..."
+                    placeholder="Name, email, or job title..."
                   />
                 </div>
               </div>
@@ -231,7 +365,7 @@ export default function ManageStaff(){
                 >
                   <option value="">All Managers</option>
                   {managers.map(([email, manager]) => (
-                    <option key={email} value={email}>
+                    <option key={manager.id} value={manager.id}>
                       {getFullName(manager)}
                     </option>
                   ))}
@@ -245,11 +379,12 @@ export default function ManageStaff(){
                   onChange={(e) => handleFilterChange({...filters, status: e.target.value})}
                 >
                   <option value="all">All Status</option>
-                  <option value="verified">Verified</option>
-                  <option value="unverified">Unverified</option>
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
+                  <option value="verified">Verified</option>
+                  <option value="unverified">Unverified</option>
                   <option value="clocked_in">Currently Clocked In</option>
+                  <option value="managers">Managers Only</option>
                 </select>
               </div>
             </div>
@@ -304,7 +439,7 @@ export default function ManageStaff(){
                           className="user-select-none"
                         >
                           <div className="d-flex justify-content-between align-items-center">
-                            Name
+                            Name & Job Title
                             <i className={getSortIcon('staffName')}></i>
                           </div>
                         </th>
@@ -314,7 +449,7 @@ export default function ManageStaff(){
                           className="user-select-none"
                         >
                           <div className="d-flex justify-content-between align-items-center">
-                            Email
+                            Contact
                             <i className={getSortIcon('email')}></i>
                           </div>
                         </th>
@@ -338,17 +473,17 @@ export default function ManageStaff(){
                             <i className={getSortIcon('role')}></i>
                           </div>
                         </th>
-                        <th>Manager</th>
                         <th 
                           role="button" 
-                          onClick={() => handleSort('verified')}
+                          onClick={() => handleSort('managerName')}
                           className="user-select-none"
                         >
                           <div className="d-flex justify-content-between align-items-center">
-                            Status
-                            <i className={getSortIcon('verified')}></i>
+                            Reports To
+                            <i className={getSortIcon('managerName')}></i>
                           </div>
                         </th>
+                        <th>Status</th>
                         <th>Actions</th>
                       </tr>
                     </thead>
@@ -358,7 +493,7 @@ export default function ManageStaff(){
                           <td>
                             {editingUser === user.email ? (
                               <div className="row g-2">
-                                <div className="col">
+                                <div className="col-6">
                                   <input 
                                     className="form-control form-control-sm"
                                     placeholder="First Name"
@@ -366,7 +501,7 @@ export default function ManageStaff(){
                                     onChange={(e) => setEditForm(prev => ({...prev, firstName: e.target.value}))}
                                   />
                                 </div>
-                                <div className="col">
+                                <div className="col-6">
                                   <input 
                                     className="form-control form-control-sm"
                                     placeholder="Last Name"
@@ -374,19 +509,28 @@ export default function ManageStaff(){
                                     onChange={(e) => setEditForm(prev => ({...prev, lastName: e.target.value}))}
                                   />
                                 </div>
+                                <div className="col-12">
+                                  <input 
+                                    className="form-control form-control-sm"
+                                    placeholder="Job Title"
+                                    value={editForm.jobTitle || ''}
+                                    onChange={(e) => setEditForm(prev => ({...prev, jobTitle: e.target.value}))}
+                                  />
+                                </div>
                               </div>
                             ) : (
                               <div>
                                 <div className="fw-semibold">{user.staffName}</div>
+                                {user.jobTitle && <div className="text-muted small">{user.jobTitle}</div>}
                                 <div className="d-flex gap-1 mt-1">
                                   {user.isManager && <span className="badge bg-info">Manager</span>}
-                                  {user.isClockedIn && <span className="badge bg-success">Active</span>}
                                 </div>
                               </div>
                             )}
                           </td>
                           <td>
-                            <span className="text-muted">{user.email}</span>
+                            <div className="text-muted small">{user.email}</div>
+                            <div className="text-muted small">{user.phone}</div>
                           </td>
                           <td>
                             {editingUser === user.email ? (
@@ -406,16 +550,35 @@ export default function ManageStaff(){
                           </td>
                           <td>
                             {editingUser === user.email ? (
-                              <select 
-                                className="form-select form-select-sm"
-                                value={editForm.role || ''}
-                                onChange={(e) => setEditForm(prev => ({...prev, role: e.target.value}))}
-                              >
-                                <option value="staff">Staff</option>
-                                <option value="admin">Admin</option>
-                                <option value="security">Security</option>
-                                <option value="ceo">CEO</option>
-                              </select>
+                              <div>
+                                <select 
+                                  className="form-select form-select-sm mb-2"
+                                  value={editForm.role || ''}
+                                  onChange={(e) => setEditForm(prev => ({
+                                    ...prev, 
+                                    role: e.target.value,
+                                    isManager: e.target.value === 'ceo' ? true : 
+                                              (e.target.value === 'admin' || e.target.value === 'security') ? false : prev.isManager,
+                                    managerId: e.target.value === 'ceo' ? '' : prev.managerId
+                                  }))}
+                                >
+                                  <option value="staff">Staff</option>
+                                  <option value="admin">Admin</option>
+                                  <option value="security">Security</option>
+                                  <option value="ceo">CEO</option>
+                                </select>
+                                {editForm.role === 'staff' && (
+                                  <div className="form-check">
+                                    <input 
+                                      type="checkbox" 
+                                      className="form-check-input"
+                                      checked={editForm.isManager || false}
+                                      onChange={(e) => setEditForm(prev => ({...prev, isManager: e.target.checked}))}
+                                    />
+                                    <label className="form-check-label small">Manager</label>
+                                  </div>
+                                )}
+                              </div>
                             ) : (
                               <span className={`badge ${getRoleBadge(user.role)}`}>
                                 {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
@@ -426,28 +589,33 @@ export default function ManageStaff(){
                             {editingUser === user.email ? (
                               <select 
                                 className="form-select form-select-sm"
-                                value={editForm.manager || ''}
-                                onChange={(e) => setEditForm(prev => ({...prev, manager: e.target.value}))}
+                                value={editForm.managerId || ''}
+                                onChange={(e) => setEditForm(prev => ({...prev, managerId: e.target.value}))}
+                                disabled={editForm.role === 'ceo'}
                               >
-                                <option value="">No Manager</option>
-                                {managers.map(([managerEmail, manager]) => (
-                                  <option key={managerEmail} value={managerEmail}>
-                                    {getFullName(manager)}
+                                <option value="">{editForm.role === 'ceo' ? 'No Manager (CEO)' : 'Select Manager'}</option>
+                                {getPotentialManagers(editForm.role, editForm.department).map(manager => (
+                                  <option key={manager.id} value={manager.id}>
+                                    {getFullName(manager)} ({manager.jobTitle || manager.role})
                                   </option>
                                 ))}
                               </select>
                             ) : (
-                              <span className="text-muted small">
-                                {user.manager ? getFullName(allUsers[user.manager]) || 'Unknown' : 'None'}
-                              </span>
+                              <span className="text-muted small">{user.managerName}</span>
                             )}
                           </td>
                           <td>
                             <div className="d-flex flex-column gap-1">
-                              <span className={`badge ${user.verified ? 'bg-success' : 'bg-warning text-dark'}`}>
-                                <i className={`fas ${user.verified ? 'fa-check-circle' : 'fa-clock'} me-1`}></i>
-                                {user.verified ? 'Verified' : 'Pending'}
-                              </span>
+                              {(() => {
+                                const status = getStatusIcon(user)
+                                return (
+                                  <span className={`small ${status.color}`}>
+                                    <i className={`fas ${status.icon} me-1`}></i>
+                                    {status.text}
+                                  </span>
+                                )
+                              })()}
+                              {!user.verified && <span className="badge bg-warning text-dark">Unverified</span>}
                               {!user.isActive && <span className="badge bg-danger">Inactive</span>}
                             </div>
                           </td>

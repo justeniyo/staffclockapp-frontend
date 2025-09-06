@@ -85,15 +85,6 @@ export default function LoginStaff() {
               Forgot your password?
             </Link>
           </div>
-          
-          {/* <div className="text-center mt-2">
-            <small className="text-muted">
-              Other portals: 
-              <Link to="/admin" className="text-decoration-none ms-1">Admin</Link> | 
-              <Link to="/security" className="text-decoration-none ms-1">Security</Link> | 
-              <Link to="/ceo" className="text-decoration-none ms-1">CEO</Link>
-            </small>
-          </div> */}
         </div>
       </div>
     </div>

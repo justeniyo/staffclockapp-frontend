@@ -1,6 +1,14 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { seedUsers, seedLeaveRequests, seedClockActivities, getFullName } from '../config/seedUsers'
+import { 
+  seedUsers, 
+  seedLeaveRequests, 
+  seedClockActivities, 
+  getFullName,
+  getUserById,
+  getUserByEmail,
+  getManagerHierarchy 
+} from '../config/seedUsers'
 
 const AuthContext = createContext()
 
@@ -56,6 +64,18 @@ export function AuthProvider({ children }) {
     localStorage.setItem('sc_active_otps', JSON.stringify(activeOTPs))
   }, [activeOTPs])
 
+  // Backend-ready API simulation functions
+  const apiCall = async (endpoint, options = {}) => {
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 100))
+    
+    // This will be replaced with actual API calls
+    console.log(`API Call: ${endpoint}`, options)
+    
+    // For now, return success
+    return { success: true }
+  }
+
   const login = ({ email, password, roleHint }) => {
     const record = allUsers[email]
     if (!record || record.password !== password) throw new Error('Invalid credentials')
@@ -70,6 +90,12 @@ export function AuthProvider({ children }) {
     const u = { ...record, email }
     setUser(u)
     
+    // Backend API call simulation
+    apiCall('/api/auth/login', {
+      method: 'POST',
+      body: { email, password, roleHint }
+    })
+    
     if (u.role === 'staff') navigate('/clock', { replace: true })
     if (u.role === 'admin') navigate('/admin-dashboard', { replace: true })
     if (u.role === 'security') navigate('/security-dashboard', { replace: true })
@@ -78,6 +104,8 @@ export function AuthProvider({ children }) {
 
   const logout = () => { 
     setUser(null)
+    // Backend API call simulation
+    apiCall('/api/auth/logout', { method: 'POST' })
     navigate('/staff', { replace: true })
   }
 
@@ -96,6 +124,12 @@ export function AuthProvider({ children }) {
       }
     }))
 
+    // Backend API call simulation
+    apiCall('/api/auth/send-otp', {
+      method: 'POST',
+      body: { email, type, otp }
+    })
+
     // Simulate email sending
     console.log(`${type === 'verification' ? 'Verification' : 'Password Reset'} OTP sent to ${email}: ${otp}`)
     return { success: true, otp } // In production, don't return OTP
@@ -106,6 +140,12 @@ export function AuthProvider({ children }) {
     if (!existingUser) {
       throw new Error('No account found with this email address')
     }
+
+    // Backend API call simulation
+    await apiCall('/api/auth/forgot-password', {
+      method: 'POST',
+      body: { email }
+    })
 
     return generateOTP(email, 'password_reset')
   }
@@ -141,6 +181,12 @@ export function AuthProvider({ children }) {
       const updated = { ...prev }
       delete updated[email]
       return updated
+    })
+
+    // Backend API call simulation
+    await apiCall('/api/auth/reset-password', {
+      method: 'POST',
+      body: { email, otp, newPassword }
     })
 
     console.log(`Password updated successfully for ${email}`)
@@ -189,20 +235,24 @@ export function AuthProvider({ children }) {
       return updated
     })
     
+    // Backend API call simulation
+    apiCall('/api/auth/verify-otp', {
+      method: 'POST',
+      body: { email, otp }
+    })
+    
     return true
   }
 
   const clockIn = () => {
     const activity = {
       id: `ca_${Date.now()}`,
-      staffId: user.email,
-      staffName: getFullName(user),
-      department: user.department,
+      staffId: user.id, // Use ID instead of email
       action: 'clock_in', 
       timestamp: new Date().toISOString(),
-      location: 'Office',
-      notes: ''
+      location: 'Main Office' // Default location, can be made dynamic
     }
+    
     setClockActivities(prev => [activity, ...prev])
     setUser(prev => ({ ...prev, isClockedIn: true }))
     
@@ -210,19 +260,23 @@ export function AuthProvider({ children }) {
       ...prev,
       [user.email]: { ...prev[user.email], isClockedIn: true }
     }))
+
+    // Backend API call simulation
+    apiCall('/api/clock/in', {
+      method: 'POST',
+      body: { staffId: user.id, location: activity.location }
+    })
   }
 
   const clockOut = () => {
     const activity = {
       id: `ca_${Date.now()}`,
-      staffId: user.email,
-      staffName: getFullName(user),
-      department: user.department,
+      staffId: user.id, // Use ID instead of email
       action: 'clock_out',
       timestamp: new Date().toISOString(), 
-      location: 'Office',
-      notes: ''
+      location: 'Main Office' // Default location, can be made dynamic
     }
+    
     setClockActivities(prev => [activity, ...prev])
     setUser(prev => ({ ...prev, isClockedIn: false }))
     
@@ -230,22 +284,41 @@ export function AuthProvider({ children }) {
       ...prev,
       [user.email]: { ...prev[user.email], isClockedIn: false }
     }))
+
+    // Backend API call simulation
+    apiCall('/api/clock/out', {
+      method: 'POST',
+      body: { staffId: user.id, location: activity.location }
+    })
   }
 
-const submitLeaveRequest = (requestData) => {
+  const submitLeaveRequest = (requestData) => {
+    // Get manager information for approval routing
+    const userRecord = allUsers[user.email]
+    const manager = userRecord.managerId ? getUserById(userRecord.managerId) : null
+    
     const newRequest = {
       id: `lr_${Date.now()}`,
-      staffId: user.email,
-      staffName: getFullName(user),
-      department: user.department,
-      manager: user.manager,
-      ...requestData,
+      staffId: user.id, // Use ID instead of email
+      type: requestData.type,
+      startDate: requestData.startDate,
+      endDate: requestData.endDate,
+      reason: (requestData.type === 'Emergency' || requestData.type === 'Sick') ? requestData.reason : null,
       status: 'pending',
       requestDate: new Date().toISOString(),
       processedBy: null,
-      processedDate: null
+      processedDate: null,
+      processingNotes: null
     }
+    
     setLeaveRequests(prev => [newRequest, ...prev])
+
+    // Backend API call simulation
+    apiCall('/api/leave-requests', {
+      method: 'POST',
+      body: newRequest
+    })
+
     return newRequest
   }
 
@@ -258,37 +331,62 @@ const submitLeaveRequest = (requestData) => {
             // Reset processing info when edited
             status: 'pending',
             processedBy: null,
-            processedDate: null
+            processedDate: null,
+            processingNotes: null
           }
         : req
     ))
+
+    // Backend API call simulation
+    apiCall(`/api/leave-requests/${requestId}`, {
+      method: 'PUT',
+      body: updatedData
+    })
   }
 
-  const processLeaveRequest = (requestId, status) => {
+  const processLeaveRequest = (requestId, status, notes = null) => {
+    const request = leaveRequests.find(req => req.id === requestId)
+    
     setLeaveRequests(prev => prev.map(req => 
       req.id === requestId 
         ? { 
             ...req, 
             status,
-            processedBy: user.email,
-            processedDate: new Date().toISOString()
+            processedBy: user.id, // Use ID instead of email
+            processedDate: new Date().toISOString(),
+            processingNotes: (request?.type === 'Emergency' || request?.type === 'Sick') ? notes : null
           }
         : req
     ))
+
+    // Backend API call simulation
+    apiCall(`/api/leave-requests/${requestId}/process`, {
+      method: 'POST',
+      body: { status, processedBy: user.id, notes }
+    })
   }
 
   const registerStaff = (staffData) => {
     const email = staffData.email
-    const defaultPassword = 'Welcome123!'
+    const defaultPassword = 'password' // Will be hashed in backend
     
     const newUser = {
-      ...staffData,
+      id: `usr_${Date.now()}`, // Generate new ID
+      email: email,
       password: defaultPassword,
+      firstName: staffData.firstName,
+      lastName: staffData.lastName,
+      role: staffData.role || 'staff',
+      department: staffData.department,
+      phone: staffData.phone,
+      jobTitle: staffData.jobTitle || '',
+      isManager: staffData.isManager || false,
+      managerId: staffData.managerId || null,
       verified: false, // User needs to verify
       isActive: true,
-      createdBy: user.email,
+      isClockedIn: false,
       createdAt: new Date().toISOString(),
-      isClockedIn: false
+      updatedAt: new Date().toISOString()
     }
     
     // Add directly to allUsers (no longer using pendingUsers)
@@ -299,6 +397,12 @@ const submitLeaveRequest = (requestData) => {
     
     // Generate verification OTP
     const result = generateOTP(email, 'verification')
+
+    // Backend API call simulation
+    apiCall('/api/admin/register-staff', {
+      method: 'POST',
+      body: newUser
+    })
     
     console.log(`Staff registered: ${email}`)
     console.log(`Default password: ${defaultPassword}`)
@@ -308,8 +412,74 @@ const submitLeaveRequest = (requestData) => {
   const updateStaff = (email, updates) => {
     setAllUsers(prev => ({
       ...prev,
-      [email]: { ...prev[email], ...updates }
+      [email]: { 
+        ...prev[email], 
+        ...updates,
+        updatedAt: new Date().toISOString()
+      }
     }))
+
+    // Backend API call simulation
+    const userToUpdate = allUsers[email]
+    if (userToUpdate) {
+      apiCall(`/api/admin/staff/${userToUpdate.id}`, {
+        method: 'PUT',
+        body: updates
+      })
+    }
+  }
+
+  // Helper to get enriched leave requests with staff names
+  const getEnrichedLeaveRequests = () => {
+    return leaveRequests.map(request => {
+      const staff = getUserById(request.staffId)
+      const processor = request.processedBy ? getUserById(request.processedBy) : null
+      
+      return {
+        ...request,
+        staffName: staff ? getFullName(staff) : 'Unknown Staff',
+        staffEmail: staff ? staff.email : 'unknown@company.com',
+        department: staff ? staff.department : 'Unknown',
+        manager: staff ? staff.managerId : null,
+        processedByName: processor ? getFullName(processor) : null
+      }
+    })
+  }
+
+  // Helper to get enriched clock activities with staff names  
+  const getEnrichedClockActivities = () => {
+    return clockActivities.map(activity => {
+      const staff = getUserById(activity.staffId)
+      
+      return {
+        ...activity,
+        staffName: staff ? getFullName(staff) : 'Unknown Staff',
+        staffEmail: staff ? staff.email : 'unknown@company.com',
+        department: staff ? staff.department : 'Unknown'
+      }
+    })
+  }
+
+  // Helper to determine approval hierarchy
+  const getApprovalHierarchy = (staffId) => {
+    const hierarchy = getManagerHierarchy(staffId)
+    return hierarchy.map(manager => ({
+      id: manager.id,
+      name: getFullName(manager),
+      email: manager.email,
+      jobTitle: manager.jobTitle || manager.role
+    }))
+  }
+
+  // Security-specific helpers
+  const getStaffForSite = (site) => {
+    if (user?.role !== 'security') return []
+    
+    return Object.values(allUsers).filter(staff => 
+      staff.role === 'staff' && 
+      staff.isActive && 
+      staff.isClockedIn
+    )
   }
 
   const isOnManager = location.pathname.startsWith('/manager')
@@ -325,15 +495,20 @@ const submitLeaveRequest = (requestData) => {
     clockIn, 
     clockOut, 
     isOnManager,
-    leaveRequests,
-    clockActivities,
+    leaveRequests: getEnrichedLeaveRequests(),
+    clockActivities: getEnrichedClockActivities(),
     allUsers,
     activeOTPs,
     submitLeaveRequest,
     updateLeaveRequest,
     processLeaveRequest,
     registerStaff,
-    updateStaff
+    updateStaff,
+    getApprovalHierarchy,
+    getStaffForSite,
+    // Raw data for components that need it
+    rawLeaveRequests: leaveRequests,
+    rawClockActivities: clockActivities
   }),[user, isOnManager, leaveRequests, clockActivities, allUsers, activeOTPs])
   
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

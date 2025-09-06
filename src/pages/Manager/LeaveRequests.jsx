@@ -17,14 +17,16 @@ export default function LeaveRequests() {
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(25)
   const [selectedRequest, setSelectedRequest] = useState(null)
+  const [processingNotes, setProcessingNotes] = useState('')
 
-  // Get team members
-  const teamMembers = Object.values(allUsers).filter(staff => staff.manager === user.email)
-  const teamEmails = teamMembers.map(member => member.email)
+  // Get team members who report to this manager
+  const teamMembers = Object.values(allUsers).filter(staff => staff.managerId === user.id)
+  const teamIds = teamMembers.map(member => member.id)
   
   // Advanced filtering and sorting
   const filteredAndSortedRequests = useMemo(() => {
-    let filtered = leaveRequests.filter(req => teamEmails.includes(req.staffId))
+    // Filter to only show requests from team members
+    let filtered = leaveRequests.filter(req => teamIds.includes(req.staffId))
 
     // Apply filters
     if (filters.search) {
@@ -77,7 +79,7 @@ export default function LeaveRequests() {
     })
 
     return sorted
-  }, [leaveRequests, teamEmails, filters, sortConfig])
+  }, [leaveRequests, teamIds, filters, sortConfig])
 
   // Pagination
   const totalPages = Math.ceil(filteredAndSortedRequests.length / itemsPerPage)
@@ -100,9 +102,29 @@ export default function LeaveRequests() {
     }))
   }, [])
 
+  const requiresNotes = (type) => {
+    return type === 'Emergency' || type === 'Sick'
+  }
+
   const handleProcess = (requestId, status) => {
-    processLeaveRequest(requestId, status, '') // No notes
+    const request = filteredAndSortedRequests.find(req => req.id === requestId)
+    
+    // For Emergency and Sick leaves, require notes
+    if (requiresNotes(request?.type) && status !== 'pending') {
+      if (!processingNotes.trim()) {
+        alert(`Processing notes are required for ${request.type} leave requests`)
+        return
+      }
+    }
+    
+    processLeaveRequest(requestId, status, processingNotes)
     setSelectedRequest(null)
+    setProcessingNotes('')
+  }
+
+  const openRequestModal = (request) => {
+    setSelectedRequest(request)
+    setProcessingNotes('')
   }
 
   const clearFilters = () => {
@@ -135,6 +157,16 @@ export default function LeaveRequests() {
     return colors[type] || 'text-secondary'
   }
 
+  const getTypeIcon = (type) => {
+    const icons = {
+      Annual: 'fa-calendar',
+      Sick: 'fa-thermometer-half',
+      Personal: 'fa-user',
+      Emergency: 'fa-exclamation-triangle'
+    }
+    return icons[type] || 'fa-question'
+  }
+
   const getSortIcon = (key) => {
     if (sortConfig.key !== key) return 'fas fa-sort text-muted'
     return sortConfig.direction === 'asc' ? 'fas fa-sort-up text-primary' : 'fas fa-sort-down text-primary'
@@ -151,7 +183,7 @@ export default function LeaveRequests() {
           <div>
             <h2 className="page-title">Team Leave Requests</h2>
             <p className="mb-0 text-muted">
-              Showing {filteredAndSortedRequests.length} of {leaveRequests.filter(req => teamEmails.includes(req.staffId)).length} requests
+              Showing {filteredAndSortedRequests.length} of {leaveRequests.filter(req => teamIds.includes(req.staffId)).length} requests
             </p>
           </div>
         </div>
@@ -345,13 +377,14 @@ export default function LeaveRequests() {
                             </td>
                             <td>
                               <span className={`badge bg-light text-dark ${getTypeColor(req.type)}`}>
-                                <i className={`fas ${
-                                  req.type === 'Annual' ? 'fa-calendar' :
-                                  req.type === 'Sick' ? 'fa-thermometer-half' :
-                                  req.type === 'Personal' ? 'fa-user' : 'fa-exclamation-triangle'
-                                } me-1`}></i>
+                                <i className={`fas ${getTypeIcon(req.type)} me-1`}></i>
                                 {req.type}
                               </span>
+                              {requiresNotes(req.type) && (
+                                <div className="mt-1">
+                                  <small className="badge bg-info">Requires Notes</small>
+                                </div>
+                              )}
                             </td>
                             <td>
                               <div className="fw-semibold">{req.startDate}</div>
@@ -378,7 +411,7 @@ export default function LeaveRequests() {
                             <td>
                               <button 
                                 className="btn btn-outline-primary btn-sm"
-                                onClick={() => setSelectedRequest(req)}
+                                onClick={() => openRequestModal(req)}
                               >
                                 <i className="fas fa-eye me-1"></i>
                                 Review
@@ -470,7 +503,7 @@ export default function LeaveRequests() {
           </div>
         </div>
 
-        {/* Simplified Review Modal */}
+        {/* Enhanced Review Modal with Notes for Emergency/Sick */}
         {selectedRequest && (
           <div className="modal show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
             <div className="modal-dialog modal-lg">
@@ -499,7 +532,13 @@ export default function LeaveRequests() {
                     <div className="col-md-6">
                       <label className="form-label fw-bold">Leave Type</label>
                       <div className="p-2 bg-light rounded">
-                        <span className={getTypeColor(selectedRequest.type)}>{selectedRequest.type}</span>
+                        <span className={getTypeColor(selectedRequest.type)}>
+                          <i className={`fas ${getTypeIcon(selectedRequest.type)} me-1`}></i>
+                          {selectedRequest.type}
+                        </span>
+                        {requiresNotes(selectedRequest.type) && (
+                          <span className="badge bg-warning text-dark ms-2">Notes Required</span>
+                        )}
                       </div>
                     </div>
                     <div className="col-md-6">
@@ -516,6 +555,15 @@ export default function LeaveRequests() {
                       <label className="form-label fw-bold">End Date</label>
                       <div className="p-2 bg-light rounded">{selectedRequest.endDate}</div>
                     </div>
+                    
+                    {/* Show reason if it exists */}
+                    {selectedRequest.reason && (
+                      <div className="col-12">
+                        <label className="form-label fw-bold">Reason</label>
+                        <div className="p-2 bg-light rounded">{selectedRequest.reason}</div>
+                      </div>
+                    )}
+                    
                     <div className="col-md-6">
                       <label className="form-label fw-bold">Current Status</label>
                       <div className="p-2 bg-light rounded">
@@ -530,6 +578,33 @@ export default function LeaveRequests() {
                         {new Date(selectedRequest.requestDate).toLocaleDateString()}
                       </div>
                     </div>
+                    
+                    {/* Show existing processing notes if any */}
+                    {selectedRequest.processingNotes && (
+                      <div className="col-12">
+                        <label className="form-label fw-bold">Previous Notes</label>
+                        <div className="p-2 bg-light rounded">{selectedRequest.processingNotes}</div>
+                      </div>
+                    )}
+                    
+                    {/* Processing notes input for Emergency and Sick leaves */}
+                    {selectedRequest.status === 'pending' && requiresNotes(selectedRequest.type) && (
+                      <div className="col-12">
+                        <label className="form-label fw-bold">
+                          Processing Notes <span className="text-danger">*</span>
+                        </label>
+                        <textarea 
+                          className="form-control"
+                          value={processingNotes}
+                          onChange={(e) => setProcessingNotes(e.target.value)}
+                          rows="3"
+                          placeholder={`Add notes for this ${selectedRequest.type.toLowerCase()} leave request...`}
+                        />
+                        <small className="text-muted">
+                          Notes are required when processing {selectedRequest.type.toLowerCase()} leave requests
+                        </small>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="modal-footer">
@@ -547,6 +622,7 @@ export default function LeaveRequests() {
                         type="button" 
                         className="btn btn-danger"
                         onClick={() => handleProcess(selectedRequest.id, 'rejected')}
+                        disabled={requiresNotes(selectedRequest.type) && !processingNotes.trim()}
                       >
                         <i className="fas fa-times me-1"></i>
                         Reject
@@ -555,6 +631,7 @@ export default function LeaveRequests() {
                         type="button" 
                         className="btn btn-success"
                         onClick={() => handleProcess(selectedRequest.id, 'approved')}
+                        disabled={requiresNotes(selectedRequest.type) && !processingNotes.trim()}
                       >
                         <i className="fas fa-check me-1"></i>
                         Approve

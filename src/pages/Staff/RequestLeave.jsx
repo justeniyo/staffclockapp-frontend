@@ -2,11 +2,12 @@ import { useState, useMemo } from 'react'
 import { useAuth } from '../../context/AuthContext'
 
 export default function RequestLeave() {
-  const { submitLeaveRequest, updateLeaveRequest, leaveRequests, user } = useAuth()
+  const { submitLeaveRequest, updateLeaveRequest, rawLeaveRequests, user } = useAuth()
   const [formData, setFormData] = useState({
     type: 'Annual',
     startDate: '',
-    endDate: ''
+    endDate: '',
+    reason: '' // For Emergency and Sick leaves only
   })
   const [editingRequest, setEditingRequest] = useState(null)
   const [editForm, setEditForm] = useState({})
@@ -15,7 +16,8 @@ export default function RequestLeave() {
 
   const ANNUAL_LEAVE_LIMIT = 18 // days per year
 
-  const myRequests = leaveRequests.filter(req => req.staffId === user.email)
+  // Get my requests using the user ID
+  const myRequests = rawLeaveRequests.filter(req => req.staffId === user.id)
 
   // Calculate annual leave usage for current year
   const annualLeaveStats = useMemo(() => {
@@ -66,6 +68,10 @@ export default function RequestLeave() {
     return (currentUsage + requestDays) <= ANNUAL_LEAVE_LIMIT
   }
 
+  const requiresReason = (type) => {
+    return type === 'Emergency' || type === 'Sick'
+  }
+
   const handleSubmit = (e) => {
     e.preventDefault()
     setError('')
@@ -74,6 +80,11 @@ export default function RequestLeave() {
     try {
       if (new Date(formData.endDate) < new Date(formData.startDate)) {
         throw new Error('End date must be after start date')
+      }
+
+      // Check if reason is required but not provided
+      if (requiresReason(formData.type) && !formData.reason.trim()) {
+        throw new Error(`Reason is required for ${formData.type} leave`)
       }
 
       // Check annual leave limit
@@ -87,7 +98,8 @@ export default function RequestLeave() {
       setFormData({
         type: 'Annual',
         startDate: '',
-        endDate: ''
+        endDate: '',
+        reason: ''
       })
     } catch (err) {
       setError(err.message)
@@ -95,9 +107,12 @@ export default function RequestLeave() {
   }
 
   const handleChange = (e) => {
+    const { name, value } = e.target
     setFormData(prev => ({
       ...prev,
-      [e.target.name]: e.target.value
+      [name]: value,
+      // Clear reason when switching to non-reason types
+      ...(name === 'type' && !requiresReason(value) ? { reason: '' } : {})
     }))
   }
 
@@ -106,7 +121,8 @@ export default function RequestLeave() {
     setEditForm({
       type: request.type,
       startDate: request.startDate,
-      endDate: request.endDate
+      endDate: request.endDate,
+      reason: request.reason || ''
     })
   }
 
@@ -114,6 +130,12 @@ export default function RequestLeave() {
     try {
       if (new Date(editForm.endDate) < new Date(editForm.startDate)) {
         setError('End date must be after start date')
+        return
+      }
+
+      // Check if reason is required but not provided
+      if (requiresReason(editForm.type) && !editForm.reason.trim()) {
+        setError(`Reason is required for ${editForm.type} leave`)
         return
       }
 
@@ -145,9 +167,12 @@ export default function RequestLeave() {
   }
 
   const handleEditChange = (e) => {
+    const { name, value } = e.target
     setEditForm(prev => ({
       ...prev,
-      [e.target.name]: e.target.value
+      [name]: value,
+      // Clear reason when switching to non-reason types
+      ...(name === 'type' && !requiresReason(value) ? { reason: '' } : {})
     }))
   }
 
@@ -180,11 +205,37 @@ export default function RequestLeave() {
   const getLeaveTypeDescription = (type) => {
     const descriptions = {
       Annual: `Annual Leave (${annualLeaveStats.remaining} days remaining)`,
-      Sick: 'Sick Leave (No limit)',
-      Personal: 'Personal Leave (No limit)', 
-      Emergency: 'Emergency Leave (No limit)'
+      Sick: 'Sick Leave (Reason required)',
+      Personal: 'Personal Leave', 
+      Emergency: 'Emergency Leave (Reason required)'
     }
     return descriptions[type] || type
+  }
+
+  const getLeaveTypeInfo = (type) => {
+    const info = {
+      Annual: { 
+        icon: 'fa-calendar', 
+        color: 'text-primary',
+        description: 'Planned vacation time'
+      },
+      Sick: { 
+        icon: 'fa-thermometer-half', 
+        color: 'text-danger',
+        description: 'Medical leave with reason'
+      },
+      Personal: { 
+        icon: 'fa-user', 
+        color: 'text-info',
+        description: 'Personal time off'
+      },
+      Emergency: { 
+        icon: 'fa-exclamation-triangle', 
+        color: 'text-warning',
+        description: 'Urgent situations with reason'
+      }
+    }
+    return info[type] || { icon: 'fa-question', color: 'text-secondary', description: '' }
   }
 
   // Check if current form request would exceed limit
@@ -278,6 +329,15 @@ export default function RequestLeave() {
                       <option value="Personal">{getLeaveTypeDescription('Personal')}</option>
                       <option value="Emergency">{getLeaveTypeDescription('Emergency')}</option>
                     </select>
+                    
+                    {/* Type information */}
+                    <div className={`mt-2 p-2 rounded bg-light`}>
+                      <small className={getLeaveTypeInfo(formData.type).color}>
+                        <i className={`fas ${getLeaveTypeInfo(formData.type).icon} me-1`}></i>
+                        {getLeaveTypeInfo(formData.type).description}
+                      </small>
+                    </div>
+                    
                     {formData.type === 'Annual' && annualLeaveStats.remaining <= 5 && (
                       <div className={`mt-2 p-2 rounded ${annualLeaveStats.remaining === 0 ? 'bg-danger text-white' : 'bg-warning'}`}>
                         <i className="fas fa-exclamation-triangle me-1"></i>
@@ -322,6 +382,28 @@ export default function RequestLeave() {
                     </div>
                   </div>
 
+                  {/* Reason field for Emergency and Sick leaves */}
+                  {requiresReason(formData.type) && (
+                    <div className="mt-3">
+                      <label className="form-label">
+                        <i className="fas fa-comment-medical me-1"></i>
+                        Reason <span className="text-danger">*</span>
+                      </label>
+                      <textarea 
+                        className="form-control"
+                        name="reason"
+                        value={formData.reason}
+                        onChange={handleChange}
+                        rows="3"
+                        placeholder={`Please provide reason for ${formData.type.toLowerCase()} leave...`}
+                        required
+                      />
+                      <small className="text-muted">
+                        Reason is required for {formData.type.toLowerCase()} leave requests
+                      </small>
+                    </div>
+                  )}
+
                   {/* Duration preview */}
                   {formData.startDate && formData.endDate && (
                     <div className={`mt-3 p-3 rounded ${currentRequestExceedsLimit ? 'bg-danger text-white' : 'bg-light'}`}>
@@ -349,7 +431,8 @@ export default function RequestLeave() {
                   <button 
                     type="submit" 
                     className="btn btn-warning w-100 mt-3"
-                    disabled={formData.type === 'Annual' && annualLeaveStats.remaining === 0}
+                    disabled={(formData.type === 'Annual' && annualLeaveStats.remaining === 0) || 
+                             (requiresReason(formData.type) && !formData.reason.trim())}
                   >
                     <i className="fas fa-paper-plane me-2"></i>
                     Submit Request
@@ -417,6 +500,19 @@ export default function RequestLeave() {
                                   min={editForm.startDate || new Date().toISOString().split('T')[0]}
                                 />
                               </div>
+                              {requiresReason(editForm.type) && (
+                                <div className="col-12">
+                                  <label className="form-label small">Reason</label>
+                                  <textarea 
+                                    className="form-control form-control-sm"
+                                    name="reason"
+                                    value={editForm.reason}
+                                    onChange={handleEditChange}
+                                    rows="2"
+                                    placeholder={`Reason for ${editForm.type.toLowerCase()} leave...`}
+                                  />
+                                </div>
+                              )}
                             </div>
                             
                             {editForm.startDate && editForm.endDate && (
@@ -440,7 +536,8 @@ export default function RequestLeave() {
                               <button 
                                 className="btn btn-success btn-sm"
                                 onClick={saveEdit}
-                                disabled={currentEditExceedsLimit}
+                                disabled={currentEditExceedsLimit || 
+                                         (requiresReason(editForm.type) && !editForm.reason.trim())}
                               >
                                 <i className="fas fa-check me-1"></i>
                                 Save
@@ -459,7 +556,8 @@ export default function RequestLeave() {
                           <div>
                             <div className="d-flex justify-content-between align-items-start mb-2">
                               <div>
-                                <div className="fw-semibold">
+                                <div className="fw-semibold d-flex align-items-center">
+                                  <i className={`fas ${getLeaveTypeInfo(req.type).icon} me-2 ${getLeaveTypeInfo(req.type).color}`}></i>
                                   {req.type} Leave
                                   {req.type === 'Annual' && (
                                     <span className="badge bg-primary ms-2">
@@ -476,6 +574,13 @@ export default function RequestLeave() {
                                     {getDaysDifference(req.startDate, req.endDate)} day(s)
                                   </span>
                                 </div>
+                                {/* Show reason for Emergency and Sick leaves */}
+                                {req.reason && (
+                                  <div className="mt-2 p-2 bg-light rounded">
+                                    <small className="text-muted d-block mb-1">Reason:</small>
+                                    <small>{req.reason}</small>
+                                  </div>
+                                )}
                               </div>
                               <div className="text-end">
                                 <span className={`badge ${getStatusBadge(req.status)} mb-2`}>
@@ -508,6 +613,14 @@ export default function RequestLeave() {
                                 </span>
                               )}
                             </div>
+                            
+                            {/* Show processing notes for Emergency and Sick leaves */}
+                            {req.processingNotes && (req.type === 'Emergency' || req.type === 'Sick') && (
+                              <div className="mt-2 p-2 bg-light rounded">
+                                <small className="text-muted d-block mb-1">Manager Notes:</small>
+                                <small>{req.processingNotes}</small>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

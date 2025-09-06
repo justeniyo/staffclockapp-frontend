@@ -29,7 +29,7 @@ export default function ClockActivities() {
     if (filters.staff) {
       filtered = filtered.filter(activity => 
         activity.staffName.toLowerCase().includes(filters.staff.toLowerCase()) ||
-        activity.staffId.toLowerCase().includes(filters.staff.toLowerCase())
+        activity.staffEmail.toLowerCase().includes(filters.staff.toLowerCase())
       )
     }
 
@@ -106,17 +106,16 @@ export default function ClockActivities() {
 
   // Export function
   const exportToCSV = () => {
-    const headers = ['Timestamp', 'Staff Name', 'Email', 'Department', 'Action', 'Location', 'Notes']
+    const headers = ['Timestamp', 'Staff Name', 'Email', 'Department', 'Action', 'Location']
     const csvContent = [
       headers.join(','),
       ...filteredAndSortedActivities.map(activity => [
         new Date(activity.timestamp).toLocaleString(),
         activity.staffName,
-        activity.staffId,
+        activity.staffEmail,
         activity.department,
         activity.action.replace('_', ' ').toUpperCase(),
-        activity.location,
-        activity.notes || ''
+        activity.location
       ].map(field => `"${field}"`).join(','))
     ].join('\n')
 
@@ -147,17 +146,43 @@ export default function ClockActivities() {
 
   const getLocationColor = (location) => {
     const colors = {
-      Office: 'text-primary',
-      Remote: 'text-info', 
-      Field: 'text-warning'
+      'Main Office': 'text-primary',
+      'Remote': 'text-info', 
+      'Warehouse': 'text-warning',
+      'Field': 'text-secondary'
     }
     return colors[location] || 'text-secondary'
+  }
+
+  const getLocationIcon = (location) => {
+    const icons = {
+      'Main Office': 'fa-building',
+      'Remote': 'fa-home',
+      'Warehouse': 'fa-warehouse',
+      'Field': 'fa-map-marker-alt'
+    }
+    return icons[location] || 'fa-map-marker-alt'
   }
 
   const getSortIcon = (key) => {
     if (sortConfig.key !== key) return 'fas fa-sort text-muted'
     return sortConfig.direction === 'asc' ? 'fas fa-sort-up text-primary' : 'fas fa-sort-down text-primary'
   }
+
+  // Statistics
+  const stats = useMemo(() => {
+    const today = new Date().toDateString()
+    const todayActivities = clockActivities.filter(activity => 
+      new Date(activity.timestamp).toDateString() === today
+    )
+    
+    return {
+      total: clockActivities.length,
+      today: todayActivities.length,
+      clockIns: todayActivities.filter(a => a.action === 'clock_in').length,
+      clockOuts: todayActivities.filter(a => a.action === 'clock_out').length
+    }
+  }, [clockActivities])
 
   return (
     <div>
@@ -179,6 +204,42 @@ export default function ClockActivities() {
       </div>
       
       <div className="page-content">
+        {/* Statistics Cards */}
+        <div className="row g-3 mb-4">
+          <div className="col-md-3">
+            <div className="card text-center">
+              <div className="card-body">
+                <h4 className="text-primary">{stats.total}</h4>
+                <p className="mb-0 small">Total Activities</p>
+              </div>
+            </div>
+          </div>
+          <div className="col-md-3">
+            <div className="card text-center">
+              <div className="card-body">
+                <h4 className="text-info">{stats.today}</h4>
+                <p className="mb-0 small">Today's Activities</p>
+              </div>
+            </div>
+          </div>
+          <div className="col-md-3">
+            <div className="card text-center">
+              <div className="card-body">
+                <h4 className="text-success">{stats.clockIns}</h4>
+                <p className="mb-0 small">Clock Ins Today</p>
+              </div>
+            </div>
+          </div>
+          <div className="col-md-3">
+            <div className="card text-center">
+              <div className="card-body">
+                <h4 className="text-danger">{stats.clockOuts}</h4>
+                <p className="mb-0 small">Clock Outs Today</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Enhanced Filters */}
         <div className="card mb-4">
           <div className="card-header">
@@ -364,7 +425,6 @@ export default function ClockActivities() {
                             <i className={getSortIcon('location')}></i>
                           </div>
                         </th>
-                        <th>Notes</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -378,7 +438,7 @@ export default function ClockActivities() {
                           </td>
                           <td>
                             <div className="fw-semibold">{activity.staffName}</div>
-                            <small className="text-muted">{activity.staffId}</small>
+                            <small className="text-muted">{activity.staffEmail}</small>
                           </td>
                           <td>
                             <span className="badge bg-light text-dark">{activity.department}</span>
@@ -391,14 +451,10 @@ export default function ClockActivities() {
                           </td>
                           <td>
                             <span className={getLocationColor(activity.location)}>
-                              <i className={`fas ${
-                                activity.location === 'Office' ? 'fa-building' :
-                                activity.location === 'Remote' ? 'fa-home' : 'fa-map-marker-alt'
-                              } me-1`}></i>
+                              <i className={`fas ${getLocationIcon(activity.location)} me-1`}></i>
                               {activity.location}
                             </span>
                           </td>
-                          <td className="text-muted small">{activity.notes}</td>
                         </tr>
                       ))}
                     </tbody>
