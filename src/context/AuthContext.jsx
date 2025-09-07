@@ -11,6 +11,7 @@ import {
   getUserByEmail,
   getLocationById,
   getDepartmentById,
+  getManagerHierarchy,
   LEAVE_TYPES
 } from '../config/seedUsers'
 
@@ -35,46 +36,19 @@ export function AuthProvider({ children }) {
     return saved ? JSON.parse(saved) : seedClockActivities
   })
 
-  // Convert array-based seed data to object format for backward compatibility
   const [allUsers, setAllUsers] = useState(()=>{
     const saved = localStorage.getItem('sc_all_users')
-    if (saved) {
-      return JSON.parse(saved)
-    }
-    // Convert array to object with email as key
-    const usersObject = {}
-    seedUsers.forEach(user => {
-      usersObject[user.email] = user
-    })
-    return usersObject
+    return saved ? JSON.parse(saved) : seedUsers
   })
 
-  // Convert array-based location data to object format
   const [locations, setLocations] = useState(()=>{
     const saved = localStorage.getItem('sc_locations')
-    if (saved) {
-      return JSON.parse(saved)
-    }
-    // Convert array to object with id as key
-    const locationsObject = {}
-    seedLocations.forEach(location => {
-      locationsObject[location.id] = location
-    })
-    return locationsObject
+    return saved ? JSON.parse(saved) : seedLocations
   })
 
-  // Convert array-based department data to object format
   const [departments, setDepartments] = useState(()=>{
     const saved = localStorage.getItem('sc_departments')
-    if (saved) {
-      return JSON.parse(saved)
-    }
-    // Convert array to object with id as key
-    const departmentsObject = {}
-    seedDepartments.forEach(dept => {
-      departmentsObject[dept.id] = dept
-    })
-    return departmentsObject
+    return saved ? JSON.parse(saved) : seedDepartments
   })
 
   // Filter state persistence
@@ -156,10 +130,7 @@ export function AuthProvider({ children }) {
       generateOTP(email, 'verification')
       throw new Error(`Account not verified. OTP sent to ${email}.||verify-account?email=${email}`)
     }
-    
-    // Handle role hint for CEO (special case: CEO has role='staff' but subRole='ceo')
-    const userRole = record.subRole === 'ceo' ? 'ceo' : record.role
-    if (roleHint && userRole !== roleHint) throw new Error('Wrong portal for this user')
+    if (roleHint && record.role !== roleHint) throw new Error('Wrong portal for this user')
     
     const u = { ...record, email }
     setUser(u)
@@ -170,11 +141,11 @@ export function AuthProvider({ children }) {
       body: { email, password, roleHint }
     })
     
-    // REDIRECT LOGIC - Always redirect to appropriate dashboard
-    if (userRole === 'staff') navigate('/clock', { replace: true })
-    else if (userRole === 'admin') navigate('/admin-dashboard', { replace: true })
-    else if (userRole === 'security') navigate('/security-dashboard', { replace: true })
-    else if (userRole === 'ceo') navigate('/ceo-dashboard', { replace: true })
+    // REDIRECT LOGIC - Always redirect to appropriate dashboard even if accessing other portals
+    if (u.role === 'staff') navigate('/clock', { replace: true })
+    else if (u.role === 'admin') navigate('/admin-dashboard', { replace: true })
+    else if (u.role === 'security') navigate('/security-dashboard', { replace: true })
+    else if (u.role === 'ceo') navigate('/ceo-dashboard', { replace: true })
   }
 
   const logout = () => { 
@@ -319,11 +290,11 @@ export function AuthProvider({ children }) {
     return true
   }
 
-  // UPDATED: Multi-location clock in/out system
+  // UPDATED: Allow location switching while on duty
   const clockIn = (locationId = null) => {
     // Default to user's assigned location or main office
     const selectedLocationId = locationId || user.assignedLocationId || 'loc_001'
-    const selectedLocation = getLocationById(selectedLocationId, locations)
+    const selectedLocation = getLocationById(selectedLocationId)
     
     const activity = {
       id: `ca_${Date.now()}`,
@@ -335,24 +306,11 @@ export function AuthProvider({ children }) {
     }
     
     setClockActivities(prev => [activity, ...prev])
-    
-    // Set current location as array (multi-location support)
-    const currentLocationIds = [selectedLocationId]
-    setUser(prev => ({ 
-      ...prev, 
-      isClockedIn: true, 
-      currentLocationId: selectedLocationId,
-      currentLocationIds: currentLocationIds
-    }))
+    setUser(prev => ({ ...prev, isClockedIn: true, currentLocationId: selectedLocationId }))
     
     setAllUsers(prev => ({
       ...prev,
-      [user.email]: { 
-        ...prev[user.email], 
-        isClockedIn: true, 
-        currentLocationId: selectedLocationId,
-        currentLocationIds: currentLocationIds
-      }
+      [user.email]: { ...prev[user.email], isClockedIn: true, currentLocationId: selectedLocationId }
     }))
 
     // Backend API call simulation
@@ -362,154 +320,80 @@ export function AuthProvider({ children }) {
     })
   }
 
-  const clockOut = () => {
-    // Clock out from all locations
-    const activities = user.currentLocationIds?.map((locationId, index) => {
-      const selectedLocation = getLocationById(locationId, locations)
-      return {
-        id: `ca_${Date.now() + index}`,
-        staffId: user.id,
-        action: 'clock_out',
-        timestamp: new Date(Date.now() + index * 1000).toISOString(), // Ensure unique timestamps
-        locationId: locationId,
-        location: selectedLocation?.name || 'Unknown Location'
-      }
-    }) || []
+  const clockOut = (locationId = null) => {
+    // Default to user's current location or assigned location
+    const selectedLocationId = locationId || user.currentLocationId || user.assignedLocationId || 'loc_001'
+    const selectedLocation = getLocationById(selectedLocationId)
     
-    if (activities.length > 0) {
-      setClockActivities(prev => [...activities, ...prev])
+    const activity = {
+      id: `ca_${Date.now()}`,
+      staffId: user.id, // Use ID instead of email
+      action: 'clock_out',
+      timestamp: new Date().toISOString(), 
+      locationId: selectedLocationId,
+      location: selectedLocation?.name || 'Unknown Location' // Backward compatibility
     }
     
-    setUser(prev => ({ 
-      ...prev, 
-      isClockedIn: false, 
-      currentLocationId: null,
-      currentLocationIds: []
-    }))
+    setClockActivities(prev => [activity, ...prev])
+    setUser(prev => ({ ...prev, isClockedIn: false, currentLocationId: null }))
     
     setAllUsers(prev => ({
       ...prev,
-      [user.email]: { 
-        ...prev[user.email], 
-        isClockedIn: false, 
-        currentLocationId: null,
-        currentLocationIds: []
-      }
+      [user.email]: { ...prev[user.email], isClockedIn: false, currentLocationId: null }
     }))
 
     // Backend API call simulation
     apiCall('/api/clock/out', {
       method: 'POST',
-      body: { staffId: user.id }
+      body: { staffId: user.id, locationId: selectedLocationId }
     })
   }
 
-  // NEW: Add location while on duty
-  const addLocation = (locationId) => {
+  // NEW: Switch location while on duty
+  const switchLocation = (newLocationId) => {
     if (!user.isClockedIn) {
-      throw new Error('Cannot add location while not clocked in')
+      throw new Error('Cannot switch location while not clocked in')
     }
 
-    const newLocation = getLocationById(locationId, locations)
-    if (!newLocation) {
-      throw new Error('Invalid location')
-    }
+    const oldLocationId = user.currentLocationId || user.assignedLocationId
+    const oldLocation = getLocationById(oldLocationId)
+    const newLocation = getLocationById(newLocationId)
 
-    // Check if user has access to this location
-    if (!user.allowedLocationIds?.includes(locationId)) {
-      throw new Error('You do not have access to this location')
-    }
-
-    // Check if already active at this location
-    if (user.currentLocationIds?.includes(locationId)) {
-      throw new Error('Already active at this location')
-    }
-
-    const activity = {
-      id: `ca_${Date.now()}`,
-      staffId: user.id,
-      action: 'clock_in',
-      timestamp: new Date().toISOString(),
-      locationId: locationId,
-      location: newLocation.name
-    }
-
-    setClockActivities(prev => [activity, ...prev])
-
-    const updatedLocationIds = [...(user.currentLocationIds || []), locationId]
-    setUser(prev => ({ 
-      ...prev, 
-      currentLocationIds: updatedLocationIds
-    }))
-    
-    setAllUsers(prev => ({
-      ...prev,
-      [user.email]: { 
-        ...prev[user.email], 
-        currentLocationIds: updatedLocationIds
-      }
-    }))
-
-    // Backend API call simulation
-    apiCall('/api/clock/add-location', {
-      method: 'POST',
-      body: { staffId: user.id, locationId }
-    })
-
-    return { success: true, location: newLocation.name }
-  }
-
-  // NEW: Remove location while on duty
-  const removeLocation = (locationId) => {
-    if (!user.isClockedIn) {
-      throw new Error('Cannot remove location while not clocked in')
-    }
-
-    if (!user.currentLocationIds?.includes(locationId)) {
-      throw new Error('Not currently active at this location')
-    }
-
-    // Cannot remove if it's the only location
-    if (user.currentLocationIds.length <= 1) {
-      throw new Error('Cannot remove the only active location. Use Clock Out instead.')
-    }
-
-    const location = getLocationById(locationId, locations)
-    const activity = {
-      id: `ca_${Date.now()}`,
+    // Create clock out activity for old location
+    const clockOutActivity = {
+      id: `ca_${Date.now()}_out`,
       staffId: user.id,
       action: 'clock_out',
       timestamp: new Date().toISOString(),
-      locationId: locationId,
-      location: location?.name || 'Unknown Location'
+      locationId: oldLocationId,
+      location: oldLocation?.name || 'Unknown Location'
     }
 
-    setClockActivities(prev => [activity, ...prev])
+    // Create clock in activity for new location (1 second later to ensure proper ordering)
+    const clockInActivity = {
+      id: `ca_${Date.now() + 1}_in`,
+      staffId: user.id,
+      action: 'clock_in',
+      timestamp: new Date(Date.now() + 1000).toISOString(),
+      locationId: newLocationId,
+      location: newLocation?.name || 'Unknown Location'
+    }
 
-    const updatedLocationIds = user.currentLocationIds.filter(id => id !== locationId)
-    setUser(prev => ({ 
-      ...prev, 
-      currentLocationIds: updatedLocationIds,
-      // Update primary location if we removed it
-      currentLocationId: updatedLocationIds[0] || null
-    }))
+    setClockActivities(prev => [clockInActivity, clockOutActivity, ...prev])
+    setUser(prev => ({ ...prev, currentLocationId: newLocationId }))
     
     setAllUsers(prev => ({
       ...prev,
-      [user.email]: { 
-        ...prev[user.email], 
-        currentLocationIds: updatedLocationIds,
-        currentLocationId: updatedLocationIds[0] || null
-      }
+      [user.email]: { ...prev[user.email], currentLocationId: newLocationId }
     }))
 
     // Backend API call simulation
-    apiCall('/api/clock/remove-location', {
+    apiCall('/api/clock/switch-location', {
       method: 'POST',
-      body: { staffId: user.id, locationId }
+      body: { staffId: user.id, fromLocationId: oldLocationId, toLocationId: newLocationId }
     })
 
-    return { success: true, location: location?.name }
+    return { success: true, newLocation: newLocation?.name }
   }
 
   const submitLeaveRequest = (requestData) => {
@@ -603,24 +487,20 @@ export function AuthProvider({ children }) {
       firstName: staffData.firstName,
       lastName: staffData.lastName,
       role: staffData.role || 'staff',
-      subRole: staffData.role === 'ceo' ? 'ceo' : staffData.subRole || null,
-      departmentId: staffData.departmentId,
-      department: staffData.department, // Keep for backward compatibility
+      department: staffData.department,
       phone: staffData.phone,
       jobTitle: staffData.jobTitle || '',
-      isManager: staffData.role === 'ceo' ? true : (staffData.isManager || false),
+      isManager: staffData.role === 'ceo' ? true : (staffData.isManager || false), // CEO is always manager
       managerId: staffData.role === 'ceo' ? null : (staffData.managerId || null),
-      verified: false,
+      verified: false, // User needs to verify then reset password
       isActive: true,
       isClockedIn: false,
       assignedLocationId: staffData.assignedLocationId || 'loc_001',
-      allowedLocationIds: staffData.allowedLocationIds || [staffData.assignedLocationId || 'loc_001'],
-      currentLocationIds: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     }
     
-    // Add directly to allUsers
+    // Add directly to allUsers (no longer using pendingUsers)
     setAllUsers(prev => ({
       ...prev,
       [email]: newUser
@@ -638,7 +518,7 @@ export function AuthProvider({ children }) {
     console.log(`Staff registered: ${email}`)
     console.log(`Temporary password: ${defaultPassword}`)
     console.log(`User must verify account then set new password`)
-    return { ...result, defaultPassword }
+    return { ...result, defaultPassword } // In production, don't return sensitive data
   }
 
   const updateStaff = (email, updates) => {
@@ -661,12 +541,13 @@ export function AuthProvider({ children }) {
     }
   }
 
+  // UPDATED: Allow CEO deactivation with replacement requirement
   const deactivateUser = async (email, reason = '', replacementCeoEmail = null) => {
     const userToDeactivate = allUsers[email]
     if (!userToDeactivate) throw new Error('User not found')
     
     // If deactivating CEO, ensure replacement is provided
-    if (userToDeactivate.subRole === 'ceo') {
+    if (userToDeactivate.role === 'ceo') {
       if (!replacementCeoEmail) {
         throw new Error('Must appoint a replacement CEO before deactivating current CEO')
       }
@@ -685,8 +566,7 @@ export function AuthProvider({ children }) {
         ...prev,
         [replacementCeoEmail]: {
           ...prev[replacementCeoEmail],
-          role: 'staff',
-          subRole: 'ceo',
+          role: 'ceo',
           isManager: true,
           managerId: null,
           updatedAt: new Date().toISOString()
@@ -714,6 +594,7 @@ export function AuthProvider({ children }) {
     return { success: true }
   }
 
+  // NEW: Reactivate user
   const reactivateUser = async (email) => {
     const user = allUsers[email]
     if (!user) throw new Error('User not found')
@@ -736,6 +617,7 @@ export function AuthProvider({ children }) {
     return { success: true }
   }
 
+  // NEW: Create department
   const createDepartment = async (departmentData) => {
     const newDept = {
       id: `dept_${Date.now()}`,
@@ -760,6 +642,7 @@ export function AuthProvider({ children }) {
     return newDept
   }
 
+  // NEW: Update department
   const updateDepartment = async (deptId, updates) => {
     setDepartments(prev => ({
       ...prev,
@@ -779,13 +662,14 @@ export function AuthProvider({ children }) {
     return { success: true }
   }
 
+  // NEW: Deactivate department
   const deactivateDepartment = async (deptId) => {
     const dept = departments[deptId]
     if (!dept) throw new Error('Department not found')
 
     // Check if any active users are in this department
     const activeUsersInDept = Object.values(allUsers).filter(user => 
-      user.departmentId === deptId && user.isActive
+      user.department === dept.name && user.isActive
     )
 
     if (activeUsersInDept.length > 0) {
@@ -810,6 +694,7 @@ export function AuthProvider({ children }) {
     return { success: true }
   }
 
+  // NEW: Create location
   const createLocation = async (locationData) => {
     const newLocation = {
       id: `loc_${Date.now()}`,
@@ -835,6 +720,7 @@ export function AuthProvider({ children }) {
     return newLocation
   }
 
+  // NEW: Update location
   const updateLocation = async (locationId, updates) => {
     setLocations(prev => ({
       ...prev,
@@ -854,6 +740,7 @@ export function AuthProvider({ children }) {
     return { success: true }
   }
 
+  // NEW: Deactivate location
   const deactivateLocation = async (locationId) => {
     const location = locations[locationId]
     if (!location) throw new Error('Location not found')
@@ -895,7 +782,7 @@ export function AuthProvider({ children }) {
         ...request,
         staffName: staff ? getFullName(staff) : 'Unknown Staff',
         staffEmail: staff ? staff.email : 'unknown@company.com',
-        department: staff ? (staff.department || getDepartmentById(staff.departmentId)?.name) : 'Unknown',
+        department: staff ? staff.department : 'Unknown',
         manager: staff ? staff.managerId : null,
         processedByName: processor ? getFullName(processor) : null
       }
@@ -906,37 +793,27 @@ export function AuthProvider({ children }) {
   const getEnrichedClockActivities = () => {
     return clockActivities.map(activity => {
       const staff = getUserById(activity.staffId)
-      const location = getLocationById(activity.locationId, locations)
+      const location = getLocationById(activity.locationId)
       
       return {
         ...activity,
         staffName: staff ? getFullName(staff) : 'Unknown Staff',
         staffEmail: staff ? staff.email : 'unknown@company.com',
-        department: staff ? (staff.department || getDepartmentById(staff.departmentId)?.name) : 'Unknown',
+        department: staff ? staff.department : 'Unknown',
         locationName: location ? location.name : (activity.location || 'Unknown Location')
       }
     })
   }
 
-  // Helper to determine approval hierarchy - using ID-based relationships
+  // Helper to determine approval hierarchy
   const getApprovalHierarchy = (staffId) => {
-    const staff = getUserById(staffId)
-    if (!staff) return []
-    
-    const hierarchy = []
-    let currentManager = staff.managerId ? getUserById(staff.managerId) : null
-    
-    while (currentManager && hierarchy.length < 5) { // Prevent infinite loops
-      hierarchy.push({
-        id: currentManager.id,
-        name: getFullName(currentManager),
-        email: currentManager.email,
-        jobTitle: currentManager.jobTitle || currentManager.role
-      })
-      currentManager = currentManager.managerId ? getUserById(currentManager.managerId) : null
-    }
-    
-    return hierarchy
+    const hierarchy = getManagerHierarchy(staffId)
+    return hierarchy.map(manager => ({
+      id: manager.id,
+      name: getFullName(manager),
+      email: manager.email,
+      jobTitle: manager.jobTitle || manager.role
+    }))
   }
 
   // UPDATED: Security-specific helpers - restrict to assigned location only
@@ -966,8 +843,7 @@ export function AuthProvider({ children }) {
     verifyOTP,
     clockIn, 
     clockOut,
-    addLocation, // NEW: Multi-location support
-    removeLocation, // NEW: Multi-location support
+    switchLocation, // NEW: Location switching
     isOnManager,
     leaveRequests: getEnrichedLeaveRequests(),
     clockActivities: getEnrichedClockActivities(),
@@ -975,9 +851,9 @@ export function AuthProvider({ children }) {
     locations,
     departments,
     activeOTPs,
-    filterStates,
-    saveFilterState,
-    getFilterState,
+    filterStates, // NEW: Filter state persistence
+    saveFilterState, // NEW: Save filter state
+    getFilterState, // NEW: Get filter state
     submitLeaveRequest,
     updateLeaveRequest,
     processLeaveRequest,

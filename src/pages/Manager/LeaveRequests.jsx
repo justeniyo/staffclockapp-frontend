@@ -1,6 +1,5 @@
 import { useState, useMemo, useCallback } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import { getUserById } from '../../config/seedUsers'
 
 export default function LeaveRequests() {
   const { leaveRequests, processLeaveRequest, user, allUsers, saveFilterState, getFilterState } = useAuth()
@@ -25,7 +24,7 @@ export default function LeaveRequests() {
   const [processingNotes, setProcessingNotes] = useState('')
   const [actionType, setActionType] = useState('') // 'approve' or 'reject'
 
-  // Get team members who report to this manager (using user ID)
+  // Get team members who report to this manager
   const teamMembers = Object.values(allUsers).filter(staff => staff.managerId === user.id)
   const teamIds = teamMembers.map(member => member.id)
   
@@ -192,16 +191,6 @@ export default function LeaveRequests() {
 
   const getDurationInDays = (startDate, endDate) => {
     return Math.ceil((new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24)) + 1
-  }
-
-  // Helper to get staff member from request using staffId
-  const getStaffFromRequest = (request) => {
-    return getUserById(request.staffId)
-  }
-
-  // Helper to get processor from request using processedBy
-  const getProcessorFromRequest = (request) => {
-    return request.processedBy ? getUserById(request.processedBy) : null
   }
 
   return (
@@ -397,12 +386,11 @@ export default function LeaveRequests() {
                     <tbody>
                       {paginatedRequests.map(req => {
                         const daysDiff = getDurationInDays(req.startDate, req.endDate)
-                        const staff = getStaffFromRequest(req)
                         return (
                           <tr key={req.id}>
                             <td>
-                              <div className="fw-semibold">{staff ? staff.firstName + ' ' + staff.lastName : req.staffName}</div>
-                              <small className="text-muted">{staff ? (staff.department || 'Unknown') : req.department}</small>
+                              <div className="fw-semibold">{req.staffName}</div>
+                              <small className="text-muted">{req.department}</small>
                             </td>
                             <td>
                               <span className={`badge bg-light text-dark ${getTypeColor(req.type)}`}>

@@ -18,22 +18,18 @@ export default function RegisterStaff() {
     email: '',
     phone: '',
     department: '',
-    departmentId: '', // NEW: Support ID-based departments
     jobTitle: '',
     role: 'staff',
     isManager: false,
     managerId: '',
-    assignedLocationId: '',
-    allowedLocationIds: [] // NEW: Multi-location support
+    assignedLocationId: ''
   })
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   
-  // Enhanced confirmation modal state
+  // Confirmation modal state
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [confirmationData, setConfirmationData] = useState(null)
-  const [validationErrors, setValidationErrors] = useState([])
-  const [warnings, setWarnings] = useState([])
   
   // Department and location management
   const [showCreateDepartment, setShowCreateDepartment] = useState(false)
@@ -41,7 +37,6 @@ export default function RegisterStaff() {
   const [newDepartment, setNewDepartment] = useState({ name: '', description: '' })
   const [newLocation, setNewLocation] = useState({ name: '', address: '', type: 'office' })
 
-  // Convert departments and locations objects to arrays for easier iteration
   const departmentsList = Object.values(departments).filter(dept => dept.isActive)
   const locationsList = Object.values(locations).filter(loc => loc.isActive)
   
@@ -56,34 +51,30 @@ export default function RegisterStaff() {
     if (formData.role === 'admin' || formData.role === 'security') {
       // Admin and Security can report to admin or CEO
       return usersList.filter(user => 
-        (user.role === 'admin' || user.subRole === 'ceo') && 
+        (user.role === 'admin' || user.role === 'ceo') && 
         user.isActive
       )
     }
     
     // For staff members
-    if (formData.departmentId) {
-      // Find the selected department
-      const selectedDept = departments[formData.departmentId]
-      if (selectedDept) {
-        // First try to find managers in the same department
-        const departmentManagers = usersList.filter(user => 
-          (user.departmentId === formData.departmentId || user.department === selectedDept.name) &&
-          user.isManager && 
-          user.role === 'staff' &&
-          user.isActive
-        )
-        
-        if (departmentManagers.length > 0) {
-          return departmentManagers
-        }
+    if (formData.department) {
+      // First try to find managers in the same department
+      const departmentManagers = usersList.filter(user => 
+        user.department === formData.department &&
+        user.isManager && 
+        user.role === 'staff' &&
+        user.isActive
+      )
+      
+      if (departmentManagers.length > 0) {
+        return departmentManagers
       }
       
       // If no department managers, show executives and CEO
       return usersList.filter(user => 
-        (user.subRole === 'ceo' || user.subRole === 'executive' ||
+        (user.role === 'ceo' || 
          (user.role === 'staff' && user.isManager && 
-          (user.department === 'Executive' || user.department === 'Administration'))) &&
+          ['Executive', 'Administration'].includes(user.department))) &&
         user.isActive
       )
     }
@@ -96,118 +87,47 @@ export default function RegisterStaff() {
 
   const potentialManagers = getPotentialManagers()
 
-  // Enhanced validation function
-  const validateFormData = () => {
-    const errors = []
-    const warnings = []
-    
-    // Required field validation
-    if (!formData.firstName.trim()) errors.push('First name is required')
-    if (!formData.lastName.trim()) errors.push('Last name is required')
-    if (!formData.email.trim()) errors.push('Email is required')
-    if (!formData.phone.trim()) errors.push('Phone number is required')
-    if (!formData.departmentId) errors.push('Department is required')
-    if (!formData.assignedLocationId) errors.push('Primary location assignment is required')
-    
-    // Email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (formData.email && !emailRegex.test(formData.email)) {
-      errors.push('Invalid email format')
-    }
-    
-    // Check for duplicate email
-    if (allUsers[formData.email]) {
-      errors.push('Email already exists in the system')
-    }
-    
-    // Manager validation
-    if (formData.role !== 'ceo' && !formData.managerId) {
-      errors.push('Manager selection is required for non-CEO roles')
-    }
-    
-    // Role-specific validation
-    if (formData.role === 'ceo' && formData.managerId) {
-      errors.push('CEO cannot have a manager')
-    }
-    
-    if (formData.role === 'admin' && formData.isManager) {
-      errors.push('Admin role cannot be a manager')
-    }
-    
-    if (formData.role === 'security' && formData.isManager) {
-      errors.push('Security role cannot be a manager')
-    }
-    
-    // Multi-location validation
-    if (formData.allowedLocationIds.length === 0) {
-      warnings.push('No additional locations selected - user will only have access to primary location')
-    }
-    
-    if (formData.allowedLocationIds.length > 0 && !formData.allowedLocationIds.includes(formData.assignedLocationId)) {
-      warnings.push('Primary location should be included in allowed locations')
-    }
-    
-    // Department hierarchy warnings
-    const manager = formData.managerId ? getUserById(formData.managerId) : null
-    const selectedDept = departments[formData.departmentId]
-    if (manager && selectedDept && manager.departmentId !== formData.departmentId && manager.department !== selectedDept.name) {
-      warnings.push(`Manager is from ${manager.department || 'unknown'} department, but user is assigned to ${selectedDept.name}`)
-    }
-    
-    // Job title recommendations
-    if (!formData.jobTitle.trim()) {
-      warnings.push('Job title is recommended for better organization')
-    }
-    
-    return { errors, warnings }
-  }
-
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
     
-    const validation = validateFormData()
-    setValidationErrors(validation.errors)
-    setWarnings(validation.warnings)
-    
-    if (validation.errors.length > 0) {
-      setError('Please fix the validation errors before proceeding')
-      return
-    }
-    
     try {
-      // Prepare enhanced confirmation data
-      const manager = formData.managerId ? getUserById(formData.managerId) : null
-      const primaryLocation = locations[formData.assignedLocationId]
-      const department = departments[formData.departmentId]
-      const allowedLocations = formData.allowedLocationIds.map(id => locations[id]).filter(Boolean)
+      if (allUsers[formData.email]) {
+        throw new Error('Email already exists')
+      }
       
-      // Calculate organizational impact
-      const departmentCount = Object.values(allUsers).filter(u => 
-        (u.departmentId === formData.departmentId || u.department === department?.name) && u.isActive
-      ).length
-      const managerReports = manager ? Object.values(allUsers).filter(u => u.managerId === manager.id && u.isActive).length : 0
+      // Validate manager selection for non-CEO roles
+      if (formData.role !== 'ceo' && !formData.managerId) {
+        throw new Error('Manager selection is required')
+      }
+      
+      // Validate role-specific rules
+      if (formData.role === 'ceo' && formData.managerId) {
+        throw new Error('CEO cannot have a manager')
+      }
+      
+      if (formData.role === 'admin' && formData.isManager) {
+        throw new Error('Admin role cannot be a manager')
+      }
+      
+      if (formData.role === 'security' && formData.isManager) {
+        throw new Error('Security role cannot be a manager')
+      }
+
+      if (!formData.assignedLocationId) {
+        throw new Error('Location assignment is required')
+      }
+      
+      // Prepare confirmation data
+      const manager = formData.managerId ? getUserById(formData.managerId) : null
+      const location = locations[formData.assignedLocationId]
+      const department = departmentsList.find(d => d.name === formData.department)
       
       setConfirmationData({
         ...formData,
         managerName: manager ? getFullName(manager) : 'None',
-        managerJobTitle: manager?.jobTitle || manager?.role,
-        managerDepartment: manager?.department,
-        primaryLocationName: primaryLocation?.name || 'Unknown',
-        primaryLocationAddress: primaryLocation?.address,
-        departmentName: department?.name || formData.department,
-        departmentDescription: department?.description,
-        allowedLocations,
-        organizationalImpact: {
-          departmentSize: departmentCount,
-          managerReportCount: managerReports,
-          isNewDepartment: !department,
-          totalAllowedLocations: formData.allowedLocationIds.length + 1 // +1 for primary
-        },
-        validation: {
-          errors: validation.errors,
-          warnings: validation.warnings
-        }
+        locationName: location?.name || 'Unknown',
+        departmentName: department?.name || formData.department
       })
       
       setShowConfirmation(true)
@@ -216,40 +136,16 @@ export default function RegisterStaff() {
     }
   }
 
-  // ACTUAL REGISTRATION AFTER DETAILED CONFIRMATION
+  // ACTUAL REGISTRATION AFTER CONFIRMATION
   const confirmRegistration = async () => {
     try {
-      // Get department name for backward compatibility
-      const selectedDept = departments[formData.departmentId]
-      
-      // Include multi-location data in registration
-      const registrationData = {
-        ...formData,
-        department: selectedDept?.name || '', // Backward compatibility
-        departmentId: formData.departmentId,
-        allowedLocationIds: [
-          formData.assignedLocationId, // Always include primary location
-          ...formData.allowedLocationIds.filter(id => id !== formData.assignedLocationId)
-        ]
-      }
-      
-      const result = registerStaff(registrationData)
+      const result = registerStaff(formData)
       setSuccess(`Staff registered successfully! 
+        Email: ${formData.email} 
+        Temporary Password: ${result.defaultPassword} 
+        Verification OTP: ${result.otp}
         
-        Registration Details:
-        • Name: ${formData.firstName} ${formData.lastName}
-        • Email: ${formData.email} 
-        • Temporary Password: ${result.defaultPassword}
-        • Verification OTP: ${result.otp}
-        • Primary Location: ${confirmationData.primaryLocationName}
-        • Additional Locations: ${confirmationData.allowedLocations.length}
-        
-        Next Steps:
-        1. User must verify their account using the OTP
-        2. After verification, they must set a new password
-        3. User can then login and access the system
-        
-        The user has been notified via email with setup instructions.`)
+        The user must verify their account and set a new password before they can login.`)
       
       // Reset form
       setFormData({
@@ -258,19 +154,15 @@ export default function RegisterStaff() {
         email: '',
         phone: '',
         department: '',
-        departmentId: '',
         jobTitle: '',
         role: 'staff',
         isManager: false,
         managerId: '',
-        assignedLocationId: '',
-        allowedLocationIds: []
+        assignedLocationId: ''
       })
       
       setShowConfirmation(false)
       setConfirmationData(null)
-      setValidationErrors([])
-      setWarnings([])
     } catch (err) {
       setError(err.message)
       setShowConfirmation(false)
@@ -292,11 +184,8 @@ export default function RegisterStaff() {
       }
       
       // Reset manager when department changes
-      if (name === 'departmentId') {
+      if (name === 'department') {
         newData.managerId = ''
-        // Update department name for backward compatibility
-        const dept = departments[value]
-        newData.department = dept?.name || ''
       }
       
       // CEO cannot have isManager false
@@ -313,16 +202,6 @@ export default function RegisterStaff() {
     })
   }
 
-  const handleLocationToggle = (locationId) => {
-    setFormData(prev => ({
-      ...prev,
-      allowedLocationIds: prev.allowedLocationIds.includes(locationId)
-        ? prev.allowedLocationIds.filter(id => id !== locationId)
-        : [...prev.allowedLocationIds, locationId]
-    }))
-  }
-
-  // Department and location creation handlers
   const handleCreateDepartment = async (e) => {
     e.preventDefault()
     setError('')
@@ -332,6 +211,7 @@ export default function RegisterStaff() {
         throw new Error('Department name is required')
       }
       
+      // Check if department already exists
       const existingDept = departmentsList.find(dept => 
         dept.name.toLowerCase() === newDepartment.name.toLowerCase()
       )
@@ -340,11 +220,7 @@ export default function RegisterStaff() {
       }
 
       const dept = await createDepartment(newDepartment)
-      setFormData(prev => ({ 
-        ...prev, 
-        departmentId: dept.id,
-        department: dept.name 
-      }))
+      setFormData(prev => ({ ...prev, department: dept.name }))
       setNewDepartment({ name: '', description: '' })
       setShowCreateDepartment(false)
       setSuccess('Department created successfully!')
@@ -362,6 +238,7 @@ export default function RegisterStaff() {
         throw new Error('Location name is required')
       }
       
+      // Check if location already exists
       const existingLoc = locationsList.find(loc => 
         loc.name.toLowerCase() === newLocation.name.toLowerCase()
       )
@@ -381,8 +258,7 @@ export default function RegisterStaff() {
 
   const getManagerDisplayName = (manager) => {
     const title = manager.jobTitle || manager.role.charAt(0).toUpperCase() + manager.role.slice(1)
-    const dept = manager.department || (manager.departmentId ? departments[manager.departmentId]?.name : 'Unknown')
-    return `${getFullName(manager)} - ${title} (${dept})`
+    return `${getFullName(manager)} - ${title} (${manager.department})`
   }
 
   const getRoleDescription = (role) => {
@@ -395,64 +271,27 @@ export default function RegisterStaff() {
     return descriptions[role] || ''
   }
 
+  // Helper to determine if staff-related fields should be shown
+  const showStaffFields = () => {
+    return formData.role === 'staff'
+  }
+
   return (
     <div>
       <div className="page-header">
         <h2 className="page-title">Register New Staff</h2>
-        <p className="mb-0">Create new user accounts with detailed validation and review</p>
       </div>
       
       <div className="page-content">
         <div className="row justify-content-center">
-          <div className="col-lg-10">
-            
-            {/* Validation Errors Alert */}
-            {validationErrors.length > 0 && (
-              <div className="alert alert-danger">
-                <h6 className="alert-heading">
-                  <i className="fas fa-exclamation-triangle me-2"></i>
-                  Validation Errors
-                </h6>
-                <ul className="mb-0">
-                  {validationErrors.map((error, index) => (
-                    <li key={index}>{error}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Warnings Alert */}
-            {warnings.length > 0 && (
-              <div className="alert alert-warning">
-                <h6 className="alert-heading">
-                  <i className="fas fa-info-circle me-2"></i>
-                  Recommendations & Warnings
-                </h6>
-                <ul className="mb-0">
-                  {warnings.map((warning, index) => (
-                    <li key={index}>{warning}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
+          <div className="col-lg-8">
             <div className="card">
               <div className="card-header">
-                <h5 className="mb-0">
-                  <i className="fas fa-user-plus me-2"></i>
-                  Staff Information & Configuration
-                </h5>
+                <h5 className="mb-0">Staff Information</h5>
               </div>
               <div className="card-body">
                 <form onSubmit={handleSubmit}>
-                  {/* Basic Information */}
-                  <div className="row g-3 mb-4">
-                    <div className="col-12">
-                      <h6 className="text-primary border-bottom pb-2">
-                        <i className="fas fa-user me-2"></i>
-                        Basic Information
-                      </h6>
-                    </div>
+                  <div className="row g-3">
                     <div className="col-md-6">
                       <label className="form-label">First Name *</label>
                       <input 
@@ -498,16 +337,6 @@ export default function RegisterStaff() {
                         required
                       />
                     </div>
-                  </div>
-
-                  {/* Role & Department */}
-                  <div className="row g-3 mb-4">
-                    <div className="col-12">
-                      <h6 className="text-primary border-bottom pb-2">
-                        <i className="fas fa-briefcase me-2"></i>
-                        Role & Department Assignment
-                      </h6>
-                    </div>
                     <div className="col-md-6">
                       <label className="form-label">Role *</label>
                       <select 
@@ -534,19 +363,19 @@ export default function RegisterStaff() {
                           className="btn btn-sm btn-outline-primary ms-2"
                           onClick={() => setShowCreateDepartment(true)}
                         >
-                          <i className="fas fa-plus"></i>
+                          <i className="fas fa-plus"></i> New
                         </button>
                       </label>
                       <select 
                         className="form-select"
-                        name="departmentId"
-                        value={formData.departmentId}
+                        name="department"
+                        value={formData.department}
                         onChange={handleChange}
                         required
                       >
                         <option value="">Select Department</option>
                         {departmentsList.map(dept => (
-                          <option key={dept.id} value={dept.id}>{dept.name}</option>
+                          <option key={dept.id} value={dept.name}>{dept.name}</option>
                         ))}
                       </select>
                     </div>
@@ -561,9 +390,35 @@ export default function RegisterStaff() {
                         placeholder="e.g. Senior Developer, Sales Manager"
                       />
                     </div>
+                    <div className="col-md-6">
+                      <label className="form-label">
+                        Location Assignment *
+                        <button 
+                          type="button" 
+                          className="btn btn-sm btn-outline-primary ms-2"
+                          onClick={() => setShowCreateLocation(true)}
+                        >
+                          <i className="fas fa-plus"></i> New
+                        </button>
+                      </label>
+                      <select 
+                        className="form-select"
+                        name="assignedLocationId"
+                        value={formData.assignedLocationId}
+                        onChange={handleChange}
+                        required
+                      >
+                        <option value="">Select Location</option>
+                        {locationsList.map(location => (
+                          <option key={location.id} value={location.id}>
+                            {location.name} ({location.type})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                     
-                    {/* Manager Checkbox for Staff Role */}
-                    {formData.role === 'staff' && (
+                    {/* Staff-specific fields - only show for staff role */}
+                    {showStaffFields() && (
                       <div className="col-md-6">
                         <div className="form-check mt-4">
                           <input 
@@ -574,99 +429,19 @@ export default function RegisterStaff() {
                             onChange={handleChange}
                           />
                           <label className="form-check-label">
-                            <strong>Is Manager</strong>
-                            <small className="text-muted d-block">
-                              Can approve leave requests and manage team members
-                            </small>
+                            Is Manager
                           </label>
                         </div>
                       </div>
                     )}
-                  </div>
-
-                  {/* Location Assignment */}
-                  <div className="row g-3 mb-4">
-                    <div className="col-12">
-                      <h6 className="text-primary border-bottom pb-2">
-                        <i className="fas fa-map-marker-alt me-2"></i>
-                        Location Assignment & Access
-                      </h6>
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label">
-                        Primary Location *
-                        <button 
-                          type="button" 
-                          className="btn btn-sm btn-outline-primary ms-2"
-                          onClick={() => setShowCreateLocation(true)}
-                        >
-                          <i className="fas fa-plus"></i>
-                        </button>
-                      </label>
-                      <select 
-                        className="form-select"
-                        name="assignedLocationId"
-                        value={formData.assignedLocationId}
-                        onChange={handleChange}
-                        required
-                      >
-                        <option value="">Select Primary Location</option>
-                        {locationsList.map(location => (
-                          <option key={location.id} value={location.id}>
-                            {location.name} ({location.type})
-                          </option>
-                        ))}
-                      </select>
-                      <small className="text-muted">Main work location for this user</small>
-                    </div>
                     
-                    {/* Multi-Location Access */}
-                    <div className="col-12">
-                      <label className="form-label">Additional Location Access</label>
-                      <div className="row g-2">
-                        {locationsList.map(location => (
-                          <div key={location.id} className="col-md-4">
-                            <div className="form-check">
-                              <input 
-                                type="checkbox" 
-                                className="form-check-input"
-                                checked={formData.allowedLocationIds.includes(location.id)}
-                                onChange={() => handleLocationToggle(location.id)}
-                                disabled={location.id === formData.assignedLocationId}
-                              />
-                              <label className="form-check-label">
-                                <strong>{location.name}</strong>
-                                <small className="text-muted d-block">
-                                  {location.type} • {location.address}
-                                </small>
-                                {location.id === formData.assignedLocationId && (
-                                  <span className="badge bg-primary">Primary</span>
-                                )}
-                              </label>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      <small className="text-muted">
-                        Select additional locations this user can access while on duty
-                      </small>
-                    </div>
-                  </div>
-                  
-                  {/* Manager Selection */}
-                  {formData.role !== 'ceo' && (
-                    <div className="row g-3 mb-4">
-                      <div className="col-12">
-                        <h6 className="text-primary border-bottom pb-2">
-                          <i className="fas fa-sitemap me-2"></i>
-                          Reporting Structure
-                        </h6>
-                      </div>
+                    {/* Manager Selection */}
+                    {formData.role !== 'ceo' && (
                       <div className="col-12">
                         <label className="form-label">
                           Reports To *
                           <small className="text-muted ms-2">
-                            {formData.departmentId && `(Showing managers for ${departments[formData.departmentId]?.name} department)`}
+                            {formData.department && `(Showing managers for ${formData.department} department)`}
                           </small>
                         </label>
                         <select 
@@ -683,59 +458,98 @@ export default function RegisterStaff() {
                             </option>
                           ))}
                         </select>
-                        {potentialManagers.length === 0 && formData.departmentId && (
+                        {potentialManagers.length === 0 && formData.department && (
                           <small className="text-warning">
                             <i className="fas fa-exclamation-triangle me-1"></i>
-                            No managers found for {departments[formData.departmentId]?.name} department. Please select a different department or create a manager first.
+                            No managers found for {formData.department} department. Please select a different department or create a manager first.
                           </small>
                         )}
                       </div>
-                    </div>
-                  )}
-                  
-                  {/* Hierarchy Preview */}
-                  {formData.managerId && (
-                    <div className="alert alert-info">
-                      <h6 className="alert-heading">
-                        <i className="fas fa-sitemap me-2"></i>
-                        Reporting Hierarchy Preview
-                      </h6>
-                      <div className="d-flex align-items-center flex-wrap">
-                        <span className="badge bg-primary me-2 mb-1">
-                          {getFullName(formData)} ({formData.jobTitle || formData.role})
-                        </span>
-                        <i className="fas fa-arrow-right mx-2"></i>
-                        <span className="badge bg-success mb-1">
-                          {getManagerDisplayName(getUserById(formData.managerId))}
-                        </span>
+                    )}
+                    
+                    {/* Hierarchy Preview */}
+                    {formData.managerId && (
+                      <div className="col-12">
+                        <div className="alert alert-info">
+                          <h6 className="alert-heading">
+                            <i className="fas fa-sitemap me-2"></i>
+                            Reporting Hierarchy Preview
+                          </h6>
+                          <div className="d-flex align-items-center">
+                            <span className="badge bg-primary me-2">
+                              {getFullName(formData)} ({formData.jobTitle || formData.role})
+                            </span>
+                            <i className="fas fa-arrow-right mx-2"></i>
+                            <span className="badge bg-success">
+                              {getManagerDisplayName(getUserById(formData.managerId))}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                   
                   {error && <div className="alert alert-danger mt-3">{error}</div>}
-                  {success && <div className="alert alert-success mt-3" style={{whiteSpace: 'pre-line'}}>{success}</div>}
+                  {success && <div className="alert alert-success mt-3">{success}</div>}
                   
                   <div className="mt-4">
-                    <button type="submit" className="btn btn-warning btn-lg">
-                      <i className="fas fa-search me-2"></i>
-                      Review & Confirm Registration
+                    <button type="submit" className="btn btn-warning">
+                      <i className="fas fa-user-plus me-2"></i>
+                      Register Staff Member
                     </button>
                   </div>
                 </form>
               </div>
             </div>
+
+            {/* Hierarchy Information Card */}
+            <div className="card mt-4">
+              <div className="card-header">
+                <h6 className="mb-0">
+                  <i className="fas fa-info-circle me-2"></i>
+                  Organization Hierarchy Guidelines
+                </h6>
+              </div>
+              <div className="card-body">
+                <div className="row g-3">
+                  <div className="col-md-6">
+                    <h6>Role Hierarchy:</h6>
+                    <ul className="list-unstyled">
+                      <li><i className="fas fa-crown text-warning me-2"></i><strong>CEO:</strong> Top level, no manager</li>
+                      <li><i className="fas fa-users text-primary me-2"></i><strong>Executives:</strong> Report to CEO</li>
+                      <li><i className="fas fa-user-tie text-info me-2"></i><strong>Department Managers:</strong> Report to Executives</li>
+                      <li><i className="fas fa-user text-secondary me-2"></i><strong>Staff:</strong> Report to Department Managers</li>
+                    </ul>
+                  </div>
+                  <div className="col-md-6">
+                    <h6>Special Roles:</h6>
+                    <ul className="list-unstyled">
+                      <li><i className="fas fa-cog text-danger me-2"></i><strong>Admin:</strong> System management, outside hierarchy</li>
+                      <li><i className="fas fa-shield-alt text-warning me-2"></i><strong>Security:</strong> Third-party, reports to admin</li>
+                    </ul>
+                    
+                    <h6 className="mt-3">Manager Rules:</h6>
+                    <ul className="list-unstyled small text-muted">
+                      <li>• CEO is automatically a manager</li>
+                      <li>• Admin and Security cannot be managers</li>
+                      <li>• Staff can be managers of their department</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* ENHANCED CONFIRMATION MODAL */}
+        {/* CONFIRMATION MODAL - REPLACES BROWSER ALERTS */}
         {showConfirmation && confirmationData && (
           <div className="modal show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
-            <div className="modal-dialog modal-xl">
+            <div className="modal-dialog modal-lg">
               <div className="modal-content">
                 <div className="modal-header">
                   <h5 className="modal-title">
                     <i className="fas fa-user-plus me-2"></i>
-                    Detailed Registration Review
+                    Confirm Staff Registration
                   </h5>
                   <button 
                     type="button" 
@@ -744,239 +558,68 @@ export default function RegisterStaff() {
                   ></button>
                 </div>
                 <div className="modal-body">
+                  <div className="alert alert-info">
+                    <i className="fas fa-info-circle me-2"></i>
+                    <strong>Please review the details below before confirming registration:</strong>
+                  </div>
                   
-                  {/* Warnings Display */}
-                  {confirmationData.validation.warnings.length > 0 && (
-                    <div className="alert alert-warning">
-                      <h6 className="alert-heading">
-                        <i className="fas fa-exclamation-triangle me-2"></i>
-                        Please Review These Warnings:
-                      </h6>
-                      <ul className="mb-0">
-                        {confirmationData.validation.warnings.map((warning, index) => (
-                          <li key={index}>{warning}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  
-                  <div className="row g-4">
-                    {/* Personal Information */}
+                  <div className="row g-3">
                     <div className="col-md-6">
-                      <div className="card border">
-                        <div className="card-header header-light">
-                          <h6 className="mb-0">
-                            <i className="fas fa-user me-2"></i>
-                            Personal Information
-                          </h6>
-                        </div>
-                        <div className="card-body">
-                          <table className="table table-borderless table-sm">
-                            <tr>
-                              <td className="fw-bold">Full Name:</td>
-                              <td>{confirmationData.firstName} {confirmationData.lastName}</td>
-                            </tr>
-                            <tr>
-                              <td className="fw-bold">Email:</td>
-                              <td>{confirmationData.email}</td>
-                            </tr>
-                            <tr>
-                              <td className="fw-bold">Phone:</td>
-                              <td>{confirmationData.phone}</td>
-                            </tr>
-                            <tr>
-                              <td className="fw-bold">Job Title:</td>
-                              <td>{confirmationData.jobTitle || 'Not specified'}</td>
-                            </tr>
-                          </table>
-                        </div>
+                      <label className="form-label fw-bold">Full Name</label>
+                      <div className="p-2 bg-light rounded">
+                        {confirmationData.firstName} {confirmationData.lastName}
                       </div>
                     </div>
-
-                    {/* Role & Department */}
                     <div className="col-md-6">
-                      <div className="card border">
-                        <div className="card-header header-light">
-                          <h6 className="mb-0">
-                            <i className="fas fa-briefcase me-2"></i>
-                            Role & Department
-                          </h6>
-                        </div>
-                        <div className="card-body">
-                          <table className="table table-borderless table-sm">
-                            <tr>
-                              <td className="fw-bold">Role:</td>
-                              <td>
-                                <span className="badge bg-primary me-2">
-                                  {confirmationData.role.toUpperCase()}
-                                </span>
-                                {confirmationData.isManager && (
-                                  <span className="badge bg-info">Manager</span>
-                                )}
-                              </td>
-                            </tr>
-                            <tr>
-                              <td className="fw-bold">Department:</td>
-                              <td>
-                                {confirmationData.departmentName}
-                                {confirmationData.organizationalImpact.isNewDepartment && (
-                                  <span className="badge bg-warning text-dark ms-2">New</span>
-                                )}
-                              </td>
-                            </tr>
-                            <tr>
-                              <td className="fw-bold">Department Size:</td>
-                              <td>{confirmationData.organizationalImpact.departmentSize} current members</td>
-                            </tr>
-                            <tr>
-                              <td className="fw-bold">Reports To:</td>
-                              <td>
-                                {confirmationData.managerName}
-                                <br />
-                                <small className="text-muted">
-                                  {confirmationData.managerJobTitle} • {confirmationData.managerDepartment}
-                                </small>
-                              </td>
-                            </tr>
-                          </table>
-                        </div>
+                      <label className="form-label fw-bold">Email</label>
+                      <div className="p-2 bg-light rounded">{confirmationData.email}</div>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label fw-bold">Phone</label>
+                      <div className="p-2 bg-light rounded">{confirmationData.phone}</div>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label fw-bold">Role</label>
+                      <div className="p-2 bg-light rounded">
+                        <span className="badge bg-primary me-2">
+                          {confirmationData.role.toUpperCase()}
+                        </span>
+                        {confirmationData.isManager && (
+                          <span className="badge bg-info">Manager</span>
+                        )}
                       </div>
                     </div>
-
-                    {/* Location Access */}
                     <div className="col-md-6">
-                      <div className="card border">
-                        <div className="card-header header-light">
-                          <h6 className="mb-0">
-                            <i className="fas fa-map-marker-alt me-2"></i>
-                            Location Access
-                          </h6>
-                        </div>
-                        <div className="card-body">
-                          <div className="mb-3">
-                            <strong>Primary Location:</strong>
-                            <div className="mt-1 p-2 bg-light rounded">
-                              <i className="fas fa-building me-2 text-primary"></i>
-                              {confirmationData.primaryLocationName}
-                              <br />
-                              <small className="text-muted">{confirmationData.primaryLocationAddress}</small>
-                            </div>
-                          </div>
-                          
-                          {confirmationData.allowedLocations.length > 0 && (
-                            <div>
-                              <strong>Additional Locations ({confirmationData.allowedLocations.length}):</strong>
-                              <div className="mt-1">
-                                {confirmationData.allowedLocations.map(location => (
-                                  <div key={location.id} className="p-2 bg-light rounded mb-1">
-                                    <small>
-                                      <i className="fas fa-map-marker-alt me-1 text-info"></i>
-                                      {location.name} ({location.type})
-                                    </small>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          
-                          <div className="mt-2 text-center">
-                            <span className="badge bg-info">
-                              Total Access: {confirmationData.organizationalImpact.totalAllowedLocations} location{confirmationData.organizationalImpact.totalAllowedLocations !== 1 ? 's' : ''}
-                            </span>
-                          </div>
-                        </div>
+                      <label className="form-label fw-bold">Department</label>
+                      <div className="p-2 bg-light rounded">{confirmationData.departmentName}</div>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label fw-bold">Job Title</label>
+                      <div className="p-2 bg-light rounded">
+                        {confirmationData.jobTitle || 'Not specified'}
                       </div>
                     </div>
-
-                    {/* System Impact */}
                     <div className="col-md-6">
-                      <div className="card border">
-                        <div className="card-header header-light">
-                          <h6 className="mb-0">
-                            <i className="fas fa-chart-line me-2"></i>
-                            Organizational Impact
-                          </h6>
-                        </div>
-                        <div className="card-body">
-                          <table className="table table-borderless table-sm">
-                            <tr>
-                              <td className="fw-bold">Manager's Reports:</td>
-                              <td>{confirmationData.organizationalImpact.managerReportCount} current direct reports</td>
-                            </tr>
-                            <tr>
-                              <td className="fw-bold">Department Growth:</td>
-                              <td>Will become member #{confirmationData.organizationalImpact.departmentSize + 1}</td>
-                            </tr>
-                            <tr>
-                              <td className="fw-bold">Location Impact:</td>
-                              <td>{confirmationData.organizationalImpact.totalAllowedLocations} locations accessible</td>
-                            </tr>
-                            <tr>
-                              <td className="fw-bold">Manager Status:</td>
-                              <td>
-                                {confirmationData.isManager ? (
-                                  <span className="text-success">
-                                    <i className="fas fa-check me-1"></i>
-                                    Can manage team members
-                                  </span>
-                                ) : (
-                                  <span className="text-muted">
-                                    <i className="fas fa-user me-1"></i>
-                                    Individual contributor
-                                  </span>
-                                )}
-                              </td>
-                            </tr>
-                          </table>
-                        </div>
-                      </div>
+                      <label className="form-label fw-bold">Reports To</label>
+                      <div className="p-2 bg-light rounded">{confirmationData.managerName}</div>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label fw-bold">Assigned Location</label>
+                      <div className="p-2 bg-light rounded">{confirmationData.locationName}</div>
                     </div>
                   </div>
                   
-                  {/* Post-Registration Process */}
-                  <div className="mt-4 p-3 bg-primary bg-opacity-10 rounded">
-                    <h6 className="text-primary mb-2">
-                      <i className="fas fa-info-circle me-2"></i>
-                      Post-Registration Process:
+                  <div className="mt-4 p-3 bg-warning bg-opacity-25 rounded">
+                    <h6 className="text-warning mb-2">
+                      <i className="fas fa-exclamation-triangle me-2"></i>
+                      After Registration:
                     </h6>
-                    <div className="row g-3">
-                      <div className="col-md-3">
-                        <div className="text-center">
-                          <i className="fas fa-user-plus fa-2x text-primary mb-2"></i>
-                          <div className="small">
-                            <strong>1. Registration</strong><br />
-                            Account created with temporary password
-                          </div>
-                        </div>
-                      </div>
-                      <div className="col-md-3">
-                        <div className="text-center">
-                          <i className="fas fa-envelope fa-2x text-info mb-2"></i>
-                          <div className="small">
-                            <strong>2. Email Verification</strong><br />
-                            OTP sent for account verification
-                          </div>
-                        </div>
-                      </div>
-                      <div className="col-md-3">
-                        <div className="text-center">
-                          <i className="fas fa-key fa-2x text-warning mb-2"></i>
-                          <div className="small">
-                            <strong>3. Password Setup</strong><br />
-                            User sets secure password
-                          </div>
-                        </div>
-                      </div>
-                      <div className="col-md-3">
-                        <div className="text-center">
-                          <i className="fas fa-check-circle fa-2x text-success mb-2"></i>
-                          <div className="small">
-                            <strong>4. System Access</strong><br />
-                            Full access granted
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                    <ul className="mb-0 small">
+                      <li>User will receive a temporary password</li>
+                      <li>A verification OTP will be sent to their email</li>
+                      <li>User must verify their account and set a new password</li>
+                      <li>User cannot login until verification is complete</li>
+                    </ul>
                   </div>
                 </div>
                 <div className="modal-footer">
@@ -985,16 +628,16 @@ export default function RegisterStaff() {
                     className="btn btn-secondary"
                     onClick={() => setShowConfirmation(false)}
                   >
-                    <i className="fas fa-arrow-left me-1"></i>
-                    Back to Edit
+                    <i className="fas fa-times me-1"></i>
+                    Cancel
                   </button>
                   <button 
                     type="button" 
-                    className="btn btn-warning btn-lg"
+                    className="btn btn-warning"
                     onClick={confirmRegistration}
                   >
                     <i className="fas fa-check me-1"></i>
-                    Confirm & Register Staff Member
+                    Confirm Registration
                   </button>
                 </div>
               </div>

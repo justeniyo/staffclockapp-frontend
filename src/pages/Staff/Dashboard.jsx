@@ -1,10 +1,10 @@
 import { useMemo } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { Link } from 'react-router-dom'
-import { getFullName, getUserById, isCEO } from '../../config/seedUsers'
+import { getFullName, getUserById } from '../../config/seedUsers'
 
 export default function StaffDashboard() {
-  const { user, rawLeaveRequests, clockActivities, locations, departments, allUsers } = useAuth()
+  const { user, rawLeaveRequests, clockActivities } = useAuth()
 
   // Get my requests and activities using user ID
   const myData = useMemo(() => {
@@ -35,29 +35,14 @@ export default function StaffDashboard() {
     }
   }, [rawLeaveRequests, clockActivities, user.id])
 
-  // Get manager information using the new ID-based structure
+  // Get manager information
   const manager = user.managerId ? getUserById(user.managerId) : null
-  const department = user.departmentId ? departments[user.departmentId] : null
-  const assignedLocation = user.assignedLocationId ? locations[user.assignedLocationId] : null
 
-  // Get team members if user is a manager (using new ID-based relationships)
+  // Get team members if user is a manager
   const teamMembers = useMemo(() => {
     if (!user.isManager) return []
-    return Object.values(allUsers).filter(member => member.managerId === user.id)
-  }, [user.isManager, user.id, allUsers])
-
-  // Enhanced location information
-  const locationInfo = useMemo(() => {
-    const allowedLocations = user.allowedLocationIds?.map(id => locations[id]).filter(Boolean) || []
-    const currentLocations = user.currentLocationIds?.map(id => locations[id]).filter(Boolean) || []
-    
-    return {
-      assigned: assignedLocation,
-      allowed: allowedLocations,
-      current: currentLocations,
-      totalAccess: allowedLocations.length
-    }
-  }, [user.allowedLocationIds, user.currentLocationIds, locations, assignedLocation])
+    return Object.values(user.isManager ? {} : {}) // Will be populated from allUsers in actual implementation
+  }, [user.isManager])
 
   const getStatusBadge = (status) => {
     const badges = {
@@ -91,65 +76,28 @@ export default function StaffDashboard() {
     return action === 'clock_in' ? 'fa-sign-in-alt' : 'fa-sign-out-alt'
   }
 
-  const getLocationIcon = (location) => {
-    const icons = {
-      office: 'fa-building',
-      warehouse: 'fa-warehouse',
-      remote: 'fa-home',
-      field: 'fa-map-marker-alt'
-    }
-    return icons[location?.type] || 'fa-map-marker-alt'
-  }
-
   return (
     <div>
       <div className="page-header">
         <h2 className="page-title">Staff Dashboard</h2>
         <p className="mb-0">Welcome back, {getFullName(user)}!</p>
-        <div className="mt-1">
-          {user.jobTitle && (
-            <span className="badge bg-primary me-2">{user.jobTitle}</span>
-          )}
-          {department && (
-            <span className="badge bg-info me-2">
-              <i className="fas fa-building me-1"></i>
-              {department.name}
-            </span>
-          )}
-          {isCEO(user) && (
-            <span className="badge bg-warning text-dark me-2">
-              <i className="fas fa-crown me-1"></i>
-              CEO
-            </span>
-          )}
-          {user.isManager && !isCEO(user) && (
-            <span className="badge bg-success me-2">
-              <i className="fas fa-users me-1"></i>
-              Manager
-            </span>
-          )}
-        </div>
+        {user.jobTitle && (
+          <small className="text-muted d-block">{user.jobTitle} • {user.department}</small>
+        )}
       </div>
 
       <div className="page-content">
-        {/* Enhanced Status Cards */}
+        {/* Status Cards */}
         <div className="row g-4 mb-4">
           <div className="col-md-3">
             <div className="card text-center">
               <div className="card-body">
                 <i className={`fas ${user.isClockedIn ? 'fa-user-check' : 'fa-user-clock'} fa-2x ${user.isClockedIn ? 'text-success' : 'text-muted'} mb-2`}></i>
                 <h4 className={user.isClockedIn ? 'text-success' : 'text-muted'}>
-                  {user.isClockedIn ? 'On Duty' : 'Off Duty'}
+                  {user.isClockedIn ? 'Clocked In' : 'Clocked Out'}
                 </h4>
-                {user.isClockedIn && locationInfo.current.length > 0 && (
-                  <div className="mb-2">
-                    <small className="text-success">
-                      Active at {locationInfo.current.length} location{locationInfo.current.length !== 1 ? 's' : ''}
-                    </small>
-                  </div>
-                )}
                 <Link to="/clock" className="btn btn-outline-warning btn-sm">
-                  {user.isClockedIn ? 'Manage Locations' : 'Clock In'}
+                  {user.isClockedIn ? 'Clock Out' : 'Clock In'}
                 </Link>
               </div>
             </div>
@@ -184,12 +132,12 @@ export default function StaffDashboard() {
           <div className="col-md-3">
             <div className="card text-center">
               <div className="card-body">
-                <i className="fas fa-map-marker-alt fa-2x text-secondary mb-2"></i>
-                <h4 className="text-secondary">{locationInfo.totalAccess}</h4>
-                <p className="mb-2">Location Access</p>
-                {assignedLocation && (
+                <i className="fas fa-building fa-2x text-secondary mb-2"></i>
+                <h4 className="text-secondary">{user.department}</h4>
+                <p className="mb-2">Department</p>
+                {manager && (
                   <small className="text-muted">
-                    Primary: {assignedLocation.name}
+                    Reports to {getFullName(manager)}
                   </small>
                 )}
               </div>
@@ -206,76 +154,12 @@ export default function StaffDashboard() {
                   <div>
                     <i className="fas fa-users me-2"></i>
                     <strong>Manager Access Available</strong>
-                    <div className="small">
-                      You have manager privileges. 
-                      {teamMembers.length > 0 && ` Managing ${teamMembers.length} team member${teamMembers.length !== 1 ? 's' : ''}.`}
-                    </div>
+                    <div className="small">You have manager privileges. Access your team management portal.</div>
                   </div>
                   <Link to="/manager-dashboard" className="btn btn-info">
                     <i className="fas fa-users-cog me-2"></i>
                     Manager Portal
                   </Link>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Enhanced Location Information */}
-        {locationInfo.totalAccess > 1 && (
-          <div className="row g-3 mb-4">
-            <div className="col-12">
-              <div className="card">
-                <div className="card-header">
-                  <h6 className="mb-0">
-                    <i className="fas fa-map-marked-alt me-2"></i>
-                    My Location Access
-                  </h6>
-                </div>
-                <div className="card-body">
-                  <div className="row g-3">
-                    <div className="col-md-6">
-                      <h6 className="small text-muted mb-2">PRIMARY LOCATION</h6>
-                      {assignedLocation ? (
-                        <div className="d-flex align-items-center p-2 bg-light rounded">
-                          <i className={`fas ${getLocationIcon(assignedLocation)} text-primary me-2`}></i>
-                          <div>
-                            <div className="fw-semibold">{assignedLocation.name}</div>
-                            <small className="text-muted">{assignedLocation.type} • {assignedLocation.address}</small>
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="text-muted">No primary location assigned</p>
-                      )}
-                    </div>
-                    <div className="col-md-6">
-                      <h6 className="small text-muted mb-2">ADDITIONAL ACCESS ({locationInfo.allowed.length - 1})</h6>
-                      <div className="d-flex flex-wrap gap-1">
-                        {locationInfo.allowed
-                          .filter(loc => loc.id !== user.assignedLocationId)
-                          .map(location => (
-                            <span key={location.id} className="badge bg-secondary">
-                              <i className={`fas ${getLocationIcon(location)} me-1`}></i>
-                              {location.name}
-                            </span>
-                          ))}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {user.isClockedIn && locationInfo.current.length > 0 && (
-                    <div className="mt-3 pt-3 border-top">
-                      <h6 className="small text-success mb-2">CURRENTLY ACTIVE</h6>
-                      <div className="d-flex flex-wrap gap-2">
-                        {locationInfo.current.map(location => (
-                          <div key={location.id} className="badge bg-success">
-                            <i className={`fas ${getLocationIcon(location)} me-1`}></i>
-                            {location.name}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
@@ -307,33 +191,30 @@ export default function StaffDashboard() {
                   </div>
                 ) : (
                   <div>
-                    {myData.activities.map(activity => {
-                      const location = locations[activity.locationId]
-                      return (
-                        <div key={activity.id} className="d-flex justify-content-between align-items-center py-2 border-bottom">
-                          <div className="d-flex align-items-center">
-                            <i className={`fas ${getActivityIcon(activity.action)} me-3 ${activity.action === 'clock_in' ? 'text-success' : 'text-danger'}`}></i>
-                            <div>
-                              <div className="fw-semibold">
-                                {activity.action.replace('_', ' ').toUpperCase()}
-                              </div>
-                              <small className="text-muted">
-                                <i className={`fas ${getLocationIcon(location)} me-1`}></i>
-                                {location?.name || activity.location}
-                              </small>
-                            </div>
-                          </div>
-                          <div className="text-end">
-                            <div className="small fw-semibold">
-                              {new Date(activity.timestamp).toLocaleDateString()}
+                    {myData.activities.map(activity => (
+                      <div key={activity.id} className="d-flex justify-content-between align-items-center py-2 border-bottom">
+                        <div className="d-flex align-items-center">
+                          <i className={`fas ${getActivityIcon(activity.action)} me-3 ${activity.action === 'clock_in' ? 'text-success' : 'text-danger'}`}></i>
+                          <div>
+                            <div className="fw-semibold">
+                              {activity.action.replace('_', ' ').toUpperCase()}
                             </div>
                             <small className="text-muted">
-                              {new Date(activity.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                              <i className="fas fa-map-marker-alt me-1"></i>
+                              {activity.location}
                             </small>
                           </div>
                         </div>
-                      )
-                    })}
+                        <div className="text-end">
+                          <div className="small fw-semibold">
+                            {new Date(activity.timestamp).toLocaleDateString()}
+                          </div>
+                          <small className="text-muted">
+                            {new Date(activity.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                          </small>
+                        </div>
+                      </div>
+                    ))}
                     <div className="text-center mt-3">
                       <Link to="/clock" className="btn btn-outline-primary btn-sm">
                         View All Activities
@@ -400,9 +281,9 @@ export default function StaffDashboard() {
           </div>
         </div>
 
-        {/* Enhanced Annual Leave Progress */}
+        {/* Annual Leave Progress */}
         <div className="row g-4 mt-2">
-          <div className="col-lg-8">
+          <div className="col-12">
             <div className="card">
               <div className="card-header">
                 <h6 className="mb-0">
@@ -448,63 +329,6 @@ export default function StaffDashboard() {
                       ? 'You have used all your annual leave for this year.'
                       : `You only have ${myData.annualDaysRemaining} annual leave days remaining for this year.`
                     }
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Enhanced Profile Information */}
-          <div className="col-lg-4">
-            <div className="card">
-              <div className="card-header">
-                <h6 className="mb-0">
-                  <i className="fas fa-user me-2"></i>
-                  Profile Information
-                </h6>
-              </div>
-              <div className="card-body">
-                <div className="mb-3">
-                  <label className="form-label fw-bold small">Name</label>
-                  <div className="p-2 bg-light rounded">{getFullName(user)}</div>
-                </div>
-                
-                {user.jobTitle && (
-                  <div className="mb-3">
-                    <label className="form-label fw-bold small">Job Title</label>
-                    <div className="p-2 bg-light rounded">{user.jobTitle}</div>
-                  </div>
-                )}
-                
-                <div className="mb-3">
-                  <label className="form-label fw-bold small">Department</label>
-                  <div className="p-2 bg-light rounded">
-                    {department ? department.name : 'Unknown'}
-                    {department?.description && (
-                      <small className="text-muted d-block">{department.description}</small>
-                    )}
-                  </div>
-                </div>
-                
-                {manager && (
-                  <div className="mb-3">
-                    <label className="form-label fw-bold small">Reports To</label>
-                    <div className="p-2 bg-light rounded">
-                      {getFullName(manager)}
-                      {manager.jobTitle && (
-                        <small className="text-muted d-block">{manager.jobTitle}</small>
-                      )}
-                    </div>
-                  </div>
-                )}
-                
-                {user.phone && (
-                  <div className="mb-3">
-                    <label className="form-label fw-bold small">Contact</label>
-                    <div className="p-2 bg-light rounded">
-                      <i className="fas fa-phone me-1"></i>
-                      {user.phone}
-                    </div>
                   </div>
                 )}
               </div>
