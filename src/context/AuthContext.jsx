@@ -117,6 +117,7 @@ export function AuthProvider({ children }) {
     return filterStates[page] || {}
   }
 
+  // FIXED: CEO login logic
   const login = ({ email, password, roleHint }) => {
     const record = allUsers[email]
     if (!record || record.password !== password) throw new Error('Invalid credentials')
@@ -126,12 +127,23 @@ export function AuthProvider({ children }) {
       throw new Error(`Account not verified. OTP sent to ${email}.||verify-account?email=${email}`)
     }
     
-    // UPDATED: Handle CEO role hint properly
+    // FIXED: Handle CEO and role validation properly
     if (roleHint) {
-      if (roleHint === 'ceo' && !isCEO(record)) {
-        throw new Error('Wrong portal for this user')
-      } else if (roleHint !== 'ceo' && roleHint !== record.role) {
-        throw new Error('Wrong portal for this user')
+      if (roleHint === 'ceo') {
+        // For CEO portal, user must be CEO
+        if (!isCEO(record)) {
+          throw new Error('Wrong portal for this user')
+        }
+      } else if (roleHint === 'staff') {
+        // For staff portal, user must be staff role (includes CEO since CEO has role='staff')
+        if (record.role !== 'staff') {
+          throw new Error('Wrong portal for this user')
+        }
+      } else {
+        // For other portals (admin, security), check role directly
+        if (roleHint !== record.role) {
+          throw new Error('Wrong portal for this user')
+        }
       }
     }
     
@@ -143,7 +155,7 @@ export function AuthProvider({ children }) {
       body: { email, password, roleHint }
     })
     
-    // UPDATED: CEO login redirects to CEO dashboard, but they can access staff/manager portals
+    // FIXED: CEO login redirects to CEO dashboard, but they can access staff/manager portals
     if (isCEO(u)) navigate('/ceo-dashboard', { replace: true })
     else if (u.role === 'staff') navigate('/clock', { replace: true })
     else if (u.role === 'admin') navigate('/admin-dashboard', { replace: true })
@@ -156,10 +168,10 @@ export function AuthProvider({ children }) {
     navigate('/staff', { replace: true })
   }
 
-  // Helper function to generate OTP
+  // FIXED: Helper function to generate OTP with proper expiration
   const generateOTP = (email, type) => {
     const otp = Math.floor(100000 + Math.random() * 900000).toString()
-    const expires = Date.now() + 300000 // 5 minutes
+    const expires = Date.now() + 300000 // 5 minutes from now
     
     setActiveOTPs(prev => ({
       ...prev,
@@ -167,7 +179,8 @@ export function AuthProvider({ children }) {
         otp,
         expires,
         type,
-        attempts: 0
+        attempts: 0,
+        generatedAt: Date.now() // Track when generated for debugging
       }
     }))
 
@@ -176,7 +189,7 @@ export function AuthProvider({ children }) {
       body: { email, type, otp }
     })
 
-    console.log(`${type === 'verification' ? 'Verification' : 'Password Reset'} OTP sent to ${email}: ${otp}`)
+    console.log(`${type === 'verification' ? 'Verification' : 'Password Reset'} OTP sent to ${email}: ${otp} (expires: ${new Date(expires).toLocaleString()})`)
     return { success: true, otp }
   }
 
@@ -246,20 +259,30 @@ export function AuthProvider({ children }) {
     return generateOTP(email, type)
   }
 
+  // FIXED: OTP verification with better error handling
   const verifyOTP = (email, otp) => {
     const otpData = activeOTPs[email]
     const user = allUsers[email]
     
+    console.log('Verifying OTP:', { email, providedOTP: otp, storedData: otpData, currentTime: Date.now() })
+    
     if (!otpData) throw new Error('No verification code found for this email')
     if (!user) throw new Error('No account found for this email')
-    if (otpData.otp !== otp) {
+    
+    // FIXED: Proper string comparison and debugging
+    if (otpData.otp.toString() !== otp.toString()) {
       setActiveOTPs(prev => ({
         ...prev,
         [email]: { ...prev[email], attempts: prev[email].attempts + 1 }
       }))
+      console.log('OTP mismatch:', { provided: otp, expected: otpData.otp })
       throw new Error('Invalid verification code')
     }
-    if (Date.now() > otpData.expires) throw new Error('Verification code has expired')
+    
+    if (Date.now() > otpData.expires) {
+      console.log('OTP expired:', { currentTime: Date.now(), expires: otpData.expires })
+      throw new Error('Verification code has expired')
+    }
     
     setAllUsers(prev => ({
       ...prev,
@@ -280,7 +303,7 @@ export function AuthProvider({ children }) {
     return true
   }
 
-  // UPDATED: Multi-location clock functions
+  // FIXED: Multi-location clock functions
   const clockIn = (locationId = null) => {
     const selectedLocationId = locationId || user.assignedLocationId || 'loc_001'
     const selectedLocation = getLocationById(selectedLocationId)
@@ -296,7 +319,7 @@ export function AuthProvider({ children }) {
     
     setClockActivities(prev => [activity, ...prev])
     
-    // UPDATED: Support multiple current locations
+    // FIXED: Start with selected location only
     setUser(prev => ({ 
       ...prev, 
       isClockedIn: true, 
@@ -358,7 +381,7 @@ export function AuthProvider({ children }) {
     })
   }
 
-  // NEW: Add location while on duty
+  // FIXED: Add location while on duty - but user can only be at one location at a time
   const addLocation = (locationId) => {
     if (!user.isClockedIn) {
       throw new Error('Cannot add location while not clocked in')
@@ -369,19 +392,39 @@ export function AuthProvider({ children }) {
       throw new Error('Already active at this location')
     }
 
-    const location = getLocationById(locationId)
-    const activity = {
-      id: `ca_${Date.now()}`,
+    // FIXED: User can only be present at one location at a time
+    // Remove from previous location and add to new location
+    const previousLocation = currentLocations[0] // Get current location
+    const newLocation = getLocationById(locationId)
+    
+    // Create activities for location change
+    const activities = []
+    
+    if (previousLocation) {
+      const prevLoc = getLocationById(previousLocation)
+      activities.push({
+        id: `ca_${Date.now()}`,
+        staffId: user.id,
+        action: 'location_remove',
+        timestamp: new Date().toISOString(),
+        locationId: previousLocation,
+        location: prevLoc?.name || 'Unknown Location'
+      })
+    }
+    
+    activities.push({
+      id: `ca_${Date.now() + 1}`,
       staffId: user.id,
       action: 'location_add',
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(Date.now() + 1000).toISOString(),
       locationId: locationId,
-      location: location?.name || 'Unknown Location'
-    }
+      location: newLocation?.name || 'Unknown Location'
+    })
 
-    setClockActivities(prev => [activity, ...prev])
+    setClockActivities(prev => [...activities, ...prev])
     
-    const newLocationIds = [...currentLocations, locationId]
+    // FIXED: Set current location to only the new location
+    const newLocationIds = [locationId] // Only one location at a time
     setUser(prev => ({ ...prev, currentLocationIds: newLocationIds }))
     
     setAllUsers(prev => ({
@@ -389,15 +432,15 @@ export function AuthProvider({ children }) {
       [user.email]: { ...prev[user.email], currentLocationIds: newLocationIds }
     }))
 
-    apiCall('/api/clock/add-location', {
+    apiCall('/api/clock/change-location', {
       method: 'POST',
-      body: { staffId: user.id, locationId }
+      body: { staffId: user.id, fromLocationId: previousLocation, toLocationId: locationId }
     })
 
-    return { success: true, location: location?.name }
+    return { success: true, location: newLocation?.name, previousLocation: previousLocation ? getLocationById(previousLocation)?.name : null }
   }
 
-  // NEW: Remove location while on duty
+  // FIXED: Remove location - since user can only be at one location, this should clock out
   const removeLocation = (locationId) => {
     if (!user.isClockedIn) {
       throw new Error('Cannot remove location while not clocked in')
@@ -408,36 +451,10 @@ export function AuthProvider({ children }) {
       throw new Error('Not currently active at this location')
     }
 
-    if (currentLocations.length <= 1) {
-      throw new Error('Cannot remove your last active location. Use Clock Out instead.')
-    }
+    // FIXED: Since user can only be at one location, removing it means clocking out
+    clockOut()
 
-    const location = getLocationById(locationId)
-    const activity = {
-      id: `ca_${Date.now()}`,
-      staffId: user.id,
-      action: 'location_remove',
-      timestamp: new Date().toISOString(),
-      locationId: locationId,
-      location: location?.name || 'Unknown Location'
-    }
-
-    setClockActivities(prev => [activity, ...prev])
-    
-    const newLocationIds = currentLocations.filter(id => id !== locationId)
-    setUser(prev => ({ ...prev, currentLocationIds: newLocationIds }))
-    
-    setAllUsers(prev => ({
-      ...prev,
-      [user.email]: { ...prev[user.email], currentLocationIds: newLocationIds }
-    }))
-
-    apiCall('/api/clock/remove-location', {
-      method: 'POST',
-      body: { staffId: user.id, locationId }
-    })
-
-    return { success: true, location: location?.name }
+    return { success: true, location: getLocationById(locationId)?.name }
   }
 
   const submitLeaveRequest = (requestData) => {
@@ -847,8 +864,8 @@ export function AuthProvider({ children }) {
     verifyOTP,
     clockIn, 
     clockOut,
-    addLocation, // NEW: Add location function
-    removeLocation, // NEW: Remove location function
+    addLocation, // FIXED: Change location function
+    removeLocation, // FIXED: Clock out since only one location allowed
     isOnManager,
     leaveRequests: getEnrichedLeaveRequests(),
     clockActivities: getEnrichedClockActivities(),

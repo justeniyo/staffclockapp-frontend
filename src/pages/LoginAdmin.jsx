@@ -1,25 +1,26 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { isCEO } from '../config/seedUsers'
 
 export default function LoginAdmin() {
   const { login, user } = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState('admin@company.com')
-  const [password, setPassword] = useState('password123')
+  const [password, setPassword] = useState('password')
   const [error, setError] = useState('')
 
-  // Redirect if already logged in
+  // FIXED: Redirect if already logged in with proper role routing
   useEffect(() => {
     if (user) {
       if (user.role === 'admin') {
         navigate('/admin-dashboard', { replace: true })
+      } else if (isCEO(user)) {
+        navigate('/ceo-dashboard', { replace: true })
       } else if (user.role === 'staff') {
         navigate('/clock', { replace: true })
       } else if (user.role === 'security') {
         navigate('/security-dashboard', { replace: true })
-      } else if (user.role === 'ceo') {
-        navigate('/ceo-dashboard', { replace: true })
       }
     }
   }, [user, navigate])
@@ -51,6 +52,14 @@ export default function LoginAdmin() {
         </div>
         <div className="card-body">
           <div className="login-title">Sign In as Admin</div>
+          
+          {/* Demo Credentials */}
+          <div className="alert alert-info mb-3">
+            <div className="small">
+              <strong>Admin Demo:</strong> admin@company.com / password
+            </div>
+          </div>
+          
           <form onSubmit={onSubmit}>
             <div className="mb-3">
               <label className="form-label">Email</label>

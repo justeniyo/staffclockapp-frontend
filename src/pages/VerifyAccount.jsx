@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext'
 export default function VerifyAccount() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const { verifyOTP, resendOTP } = useAuth()
+  const { verifyOTP, resendOTP, activeOTPs } = useAuth()
   const [email, setEmail] = useState(searchParams.get('email') || '')
   const [otp, setOtp] = useState('')
   const [error, setError] = useState('')
@@ -13,19 +13,29 @@ export default function VerifyAccount() {
   const [loading, setLoading] = useState(false)
   const [resendLoading, setResendLoading] = useState(false)
 
+  // FIXED: Debug OTP data for development
+  useEffect(() => {
+    if (email && activeOTPs[email]) {
+      console.log('Current OTP for', email, ':', activeOTPs[email].otp)
+      console.log('OTP expires at:', new Date(activeOTPs[email].expires).toLocaleString())
+    }
+  }, [email, activeOTPs])
+
   const handleVerify = async (e) => {
     e.preventDefault()
     setError('')
     setLoading(true)
 
     try {
+      console.log('Attempting to verify OTP:', { email, otp, activeOTPs })
       await verifyOTP(email, otp)
       setSuccess('Account verified! Redirecting to set your password...')
-      // Fixed: After verification, redirect to password reset instead of login
+      // FIXED: After verification, redirect to password reset instead of login
       setTimeout(() => {
         navigate(`/reset-password?email=${email}&verified=true`)
       }, 2000)
     } catch (err) {
+      console.error('Verification error:', err)
       setError(err.message)
     } finally {
       setLoading(false)
@@ -42,8 +52,9 @@ export default function VerifyAccount() {
     setResendLoading(true)
 
     try {
-      await resendOTP(email, 'verification')
+      const result = await resendOTP(email, 'verification')
       setSuccess('New verification code sent!')
+      console.log('New OTP generated:', result.otp)
       setTimeout(() => setSuccess(''), 3000)
     } catch (err) {
       setError(err.message)
@@ -51,6 +62,10 @@ export default function VerifyAccount() {
       setResendLoading(false)
     }
   }
+
+  // FIXED: Get current OTP info for debugging
+  const currentOtpData = activeOTPs[email]
+  const isOtpExpired = currentOtpData ? Date.now() > currentOtpData.expires : false
 
   return (
     <div className="login-page login-staff">
@@ -71,6 +86,18 @@ export default function VerifyAccount() {
               After verification, you'll be prompted to set your new password.
             </div>
           </div>
+
+          {/* FIXED: Development helper - show current OTP */}
+          {process.env.NODE_ENV === 'development' && currentOtpData && (
+            <div className="alert alert-warning mb-3">
+              <div className="small">
+                <strong>Development Mode:</strong><br/>
+                Current OTP: <code>{currentOtpData.otp}</code><br/>
+                Expires: {new Date(currentOtpData.expires).toLocaleString()}<br/>
+                Status: {isOtpExpired ? 'Expired' : 'Valid'}
+              </div>
+            </div>
+          )}
           
           <form onSubmit={handleVerify}>
             <div className="mb-3">
@@ -113,13 +140,27 @@ export default function VerifyAccount() {
                   )}
                 </button>
               </div>
-              <small className="text-muted">Didn't receive the code? Click the refresh button</small>
+              <small className="text-muted">
+                {isOtpExpired ? (
+                  <span className="text-danger">Code expired - click refresh to get a new one</span>
+                ) : (
+                  "Didn't receive the code? Click the refresh button"
+                )}
+              </small>
             </div>
             
             {error && (
               <div className="alert alert-danger py-2">
                 <i className="fas fa-exclamation-triangle me-2"></i>
                 {error}
+                {currentOtpData && (
+                  <div className="small mt-1">
+                    Debug: OTP exists = {!!currentOtpData}, 
+                    Provided = "{otp}", 
+                    Expected = "{currentOtpData.otp}",
+                    Expired = {isOtpExpired ? 'Yes' : 'No'}
+                  </div>
+                )}
               </div>
             )}
             
@@ -133,7 +174,7 @@ export default function VerifyAccount() {
             <button 
               className="btn btn-warning w-100 mb-3" 
               type="submit"
-              disabled={loading}
+              disabled={loading || !otp.trim()}
             >
               {loading ? (
                 <>
@@ -154,6 +195,17 @@ export default function VerifyAccount() {
               <i className="fas fa-arrow-left me-2"></i>
               Back to Login
             </Link>
+          </div>
+
+          {/* FIXED: Help section for OTP issues */}
+          <div className="mt-4 pt-3 border-top">
+            <h6 className="small text-muted mb-2">Having Issues?</h6>
+            <div className="small text-muted">
+              <div className="mb-1">• Make sure you're entering the 6-digit code exactly as received</div>
+              <div className="mb-1">• Check if the code has expired (codes are valid for 5 minutes)</div>
+              <div className="mb-1">• Click the refresh button to get a new code if needed</div>
+              <div>• Contact support if problems persist</div>
+            </div>
           </div>
         </div>
       </div>

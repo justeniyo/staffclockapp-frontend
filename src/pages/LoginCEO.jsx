@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { isCEO } from '../config/seedUsers'
 
 export default function LoginCEO() {
   const { login, user } = useAuth()
@@ -9,11 +10,10 @@ export default function LoginCEO() {
   const [password, setPassword] = useState('password')
   const [error, setError] = useState('')
 
-  // Redirect if already logged in
+  // FIXED: Redirect if already logged in with proper role routing
   useEffect(() => {
     if (user) {
-      // CEO can access different portals based on their role
-      if (user.subRole === 'ceo' || user.accessLevel === 'ceo') {
+      if (isCEO(user)) {
         navigate('/ceo-dashboard', { replace: true })
       } else if (user.role === 'staff') {
         navigate('/clock', { replace: true })
@@ -29,7 +29,7 @@ export default function LoginCEO() {
     e.preventDefault()
     setError('')
     try { 
-      // UPDATED: Use 'ceo' role hint for CEO login validation
+      // FIXED: Use 'ceo' role hint for CEO login validation
       login({ email, password, roleHint: 'ceo' }) 
     }
     catch (err) { 
@@ -64,7 +64,8 @@ export default function LoginCEO() {
           {/* CEO Portal Information */}
           <div className="alert alert-info mb-4">
             <div className="small">
-              <strong>CEO Access:</strong> As CEO, you have access to:
+              <strong>CEO Demo:</strong> ceo@company.com / password<br/>
+              <strong>CEO Access:</strong> You have access to:
               <ul className="mb-0 mt-1">
                 <li>Executive Dashboard & Reports</li>
                 <li>Staff Portal (Clock In/Out, Leave Requests)</li>

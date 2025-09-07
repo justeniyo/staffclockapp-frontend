@@ -1,12 +1,29 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { isCEO } from '../config/seedUsers'
 
 export default function LoginSecurity() {
-  const { login } = useAuth()
+  const { login, user } = useAuth()
+  const navigate = useNavigate()
   const [email, setEmail] = useState('security@company.com')
-  const [password, setPassword] = useState('password123')
+  const [password, setPassword] = useState('password')
   const [error, setError] = useState('')
+
+  // FIXED: Redirect if already logged in with proper role routing
+  useEffect(() => {
+    if (user) {
+      if (user.role === 'security') {
+        navigate('/security-dashboard', { replace: true })
+      } else if (isCEO(user)) {
+        navigate('/ceo-dashboard', { replace: true })
+      } else if (user.role === 'staff') {
+        navigate('/clock', { replace: true })
+      } else if (user.role === 'admin') {
+        navigate('/admin-dashboard', { replace: true })
+      }
+    }
+  }, [user, navigate])
 
   const onSubmit = (e) => {
     e.preventDefault()
@@ -35,6 +52,14 @@ export default function LoginSecurity() {
         </div>
         <div className="card-body">
           <div className="login-title">Sign In</div>
+          
+          {/* Demo Credentials */}
+          <div className="alert alert-info mb-3">
+            <div className="small">
+              <strong>Security Demo:</strong> security@company.com / password
+            </div>
+          </div>
+          
           <form onSubmit={onSubmit}>
             <div className="mb-3">
               <label className="form-label">Email</label>
@@ -64,6 +89,15 @@ export default function LoginSecurity() {
             <Link to="/forgot-password?portal=security" className="text-decoration-none">
               Forgot your password?
             </Link>
+          </div>
+          
+          <div className="text-center mt-3">
+            <small className="text-muted">
+              Other portals: 
+              <Link to="/staff" className="text-decoration-none ms-1">Staff</Link> | 
+              <Link to="/admin" className="text-decoration-none ms-1">Admin</Link> | 
+              <Link to="/ceo" className="text-decoration-none ms-1">CEO</Link>
+            </small>
           </div>
         </div>
       </div>

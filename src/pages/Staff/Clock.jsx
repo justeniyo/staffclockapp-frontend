@@ -11,11 +11,11 @@ export default function Clock() {
   const availableLocations = Object.values(locations).filter(loc => loc.isActive)
   const selectedLocation = locations[selectedLocationId]
   
-  // Get current locations where user is active
+  // FIXED: Get current location (only one at a time)
   const currentLocationIds = user?.currentLocationIds || []
-  const currentLocations = currentLocationIds.map(id => locations[id]).filter(Boolean)
+  const currentLocation = currentLocationIds.length > 0 ? locations[currentLocationIds[0]] : null
   
-  // Check if selected location is already active
+  // Check if selected location is the current active location
   const isLocationActive = currentLocationIds.includes(selectedLocationId)
   
   const handleClockIn = async () => {
@@ -44,32 +44,29 @@ export default function Clock() {
     }
   }
 
-  const handleAddLocation = async () => {
+  // FIXED: Handle changing location (not adding additional)
+  const handleChangeLocation = async () => {
     if (isLocationActive || !user?.isClockedIn) return
     
     setLoading(true)
     try {
-      await addLocation(selectedLocationId)
-      setLastAction('location_added')
+      const result = await addLocation(selectedLocationId)
+      setLastAction('location_changed')
       setTimeout(() => setLastAction(''), 3000)
     } catch (error) {
-      console.error('Add location failed:', error)
+      console.error('Change location failed:', error)
       alert(error.message)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleRemoveLocation = async (locationId) => {
-    if (currentLocationIds.length <= 1) {
-      alert('Cannot remove your last active location. Use Clock Out instead.')
-      return
-    }
-    
+  // FIXED: Remove location means clock out (since only one location allowed)
+  const handleRemoveLocation = async () => {
     setLoading(true)
     try {
-      await removeLocation(locationId)
-      setLastAction('location_removed')
+      await removeLocation(currentLocationIds[0])
+      setLastAction('clocked_out')
       setTimeout(() => setLastAction(''), 3000)
     } catch (error) {
       console.error('Remove location failed:', error)
@@ -80,12 +77,12 @@ export default function Clock() {
   }
   
   const getCurrentStatus = () => {
-    if (user?.isClockedIn) {
+    if (user?.isClockedIn && currentLocation) {
       return {
         status: 'On Duty',
         statusClass: 'text-success',
         statusIcon: 'fa-check-circle',
-        message: `Active at ${currentLocations.length} location${currentLocations.length !== 1 ? 's' : ''}`,
+        message: `Currently at ${currentLocation.name}`,
         buttonText: 'Clock Out',
         buttonClass: 'btn-danger',
         buttonIcon: 'fa-sign-out-alt',
@@ -133,10 +130,8 @@ export default function Clock() {
         return { text: 'Successfully clocked in!', class: 'alert-success' }
       case 'clocked_out':
         return { text: 'Successfully clocked out!', class: 'alert-info' }
-      case 'location_added':
-        return { text: 'Location added to your active sites!', class: 'alert-success' }
-      case 'location_removed':
-        return { text: 'Location removed from your active sites!', class: 'alert-warning' }
+      case 'location_changed':
+        return { text: 'Location changed successfully!', class: 'alert-success' }
       default:
         return null
     }
@@ -147,8 +142,8 @@ export default function Clock() {
   return (
     <div>
       <div className="page-header">
-        <h2 className="page-title">Multi-Location Clock</h2>
-        <p className="mb-0">Track your working hours across multiple locations</p>
+        <h2 className="page-title">Location Clock</h2>
+        <p className="mb-0">Track your working hours - one location at a time</p>
       </div>
       
       <div className="page-content">
@@ -173,39 +168,35 @@ export default function Clock() {
                 </h3>
                 <p className="text-muted mb-4">{currentStatus.message}</p>
                 
-                {/* Current Locations Display */}
-                {user?.isClockedIn && currentLocations.length > 0 && (
-                  <div className="row g-3 mb-4">
-                    {currentLocations.map(location => (
-                      <div key={location.id} className="col-md-6">
-                        <div className="card border-success">
-                          <div className="card-body p-3">
-                            <div className="d-flex justify-content-between align-items-start">
-                              <div className="text-start">
-                                <h6 className="card-title mb-1">
-                                  <i className={`fas ${getLocationTypeIcon(location.type)} ${getLocationTypeColor(location.type)} me-2`}></i>
-                                  {location.name}
-                                </h6>
-                                <p className="card-text small text-muted mb-0">{location.address}</p>
-                                <span className={`badge bg-light ${getLocationTypeColor(location.type)} mt-1`}>
-                                  {location.type}
-                                </span>
-                              </div>
-                              {currentLocations.length > 1 && (
-                                <button 
-                                  className="btn btn-sm btn-outline-danger"
-                                  onClick={() => handleRemoveLocation(location.id)}
-                                  disabled={loading}
-                                  title="Remove from active locations"
-                                >
-                                  <i className="fas fa-minus"></i>
-                                </button>
-                              )}
+                {/* FIXED: Current Location Display - Only One Location */}
+                {user?.isClockedIn && currentLocation && (
+                  <div className="row justify-content-center mb-4">
+                    <div className="col-md-6">
+                      <div className="card border-success">
+                        <div className="card-body p-3">
+                          <div className="d-flex justify-content-between align-items-start">
+                            <div className="text-start">
+                              <h6 className="card-title mb-1">
+                                <i className={`fas ${getLocationTypeIcon(currentLocation.type)} ${getLocationTypeColor(currentLocation.type)} me-2`}></i>
+                                {currentLocation.name}
+                              </h6>
+                              <p className="card-text small text-muted mb-0">{currentLocation.address}</p>
+                              <span className={`badge bg-light ${getLocationTypeColor(currentLocation.type)} mt-1`}>
+                                {currentLocation.type}
+                              </span>
                             </div>
+                            <button 
+                              className="btn btn-sm btn-outline-danger"
+                              onClick={handleRemoveLocation}
+                              disabled={loading}
+                              title="Clock out from this location"
+                            >
+                              <i className="fas fa-sign-out-alt"></i>
+                            </button>
                           </div>
                         </div>
                       </div>
-                    ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -216,13 +207,13 @@ export default function Clock() {
               <div className="card-header">
                 <h6 className="mb-0">
                   <i className="fas fa-map-marked-alt me-2"></i>
-                  {user?.isClockedIn ? 'Add Work Location' : 'Select Work Location'}
+                  {user?.isClockedIn ? 'Change Work Location' : 'Select Work Location'}
                 </h6>
               </div>
               <div className="card-body">
                 <div className="mb-3">
                   <label className="form-label">
-                    {user?.isClockedIn ? 'Additional Work Location' : 'Primary Work Location'}
+                    {user?.isClockedIn ? 'Switch to Different Location' : 'Primary Work Location'}
                   </label>
                   <select 
                     className="form-select" 
@@ -245,35 +236,37 @@ export default function Clock() {
                   )}
                 </div>
 
-                {/* Multi-Location Actions */}
+                {/* FIXED: Location Change Actions */}
                 {user?.isClockedIn && (
                   <div>
                     {isLocationActive ? (
                       <div className="alert alert-info">
                         <i className="fas fa-info-circle me-2"></i>
-                        <strong>Already Active:</strong> You are currently working at {selectedLocation?.name}
+                        <strong>Current Location:</strong> You are currently working at {selectedLocation?.name}
                       </div>
                     ) : (
-                      <div className="alert alert-success">
+                      <div className="alert alert-warning">
                         <div className="d-flex justify-content-between align-items-center">
                           <div>
-                            <i className="fas fa-plus-circle me-2"></i>
-                            <strong>Add Location:</strong> Start working at {selectedLocation?.name}
+                            <i className="fas fa-exchange-alt me-2"></i>
+                            <strong>Change Location:</strong> Move from {currentLocation?.name} to {selectedLocation?.name}
+                            <br/>
+                            <small className="text-muted">This will clock you out from {currentLocation?.name} and into {selectedLocation?.name}</small>
                           </div>
                           <button 
-                            className="btn btn-success btn-sm"
-                            onClick={handleAddLocation}
+                            className="btn btn-warning btn-sm"
+                            onClick={handleChangeLocation}
                             disabled={loading}
                           >
                             {loading ? (
                               <>
                                 <i className="fas fa-spinner fa-spin me-1"></i>
-                                Adding...
+                                Changing...
                               </>
                             ) : (
                               <>
-                                <i className="fas fa-plus me-1"></i>
-                                Add Location
+                                <i className="fas fa-exchange-alt me-1"></i>
+                                Change Location
                               </>
                             )}
                           </button>
@@ -286,7 +279,7 @@ export default function Clock() {
                 {!user?.isClockedIn && (
                   <div className="alert alert-secondary">
                     <i className="fas fa-info-circle me-2"></i>
-                    You must clock in first to start working. After clocking in, you can add additional locations.
+                    Clock in to start working at your selected location. You can change locations later if needed.
                   </div>
                 )}
               </div>
@@ -340,7 +333,7 @@ export default function Clock() {
                       )}
                     </button>
                     <small className="text-muted d-block text-center mt-2">
-                      {!user?.isClockedIn ? 'Not clocked in' : `End shift at all ${currentLocations.length} location${currentLocations.length !== 1 ? 's' : ''}`}
+                      {!user?.isClockedIn ? 'Not clocked in' : `End shift at ${currentLocation?.name}`}
                     </small>
                   </div>
                 </div>
@@ -354,19 +347,19 @@ export default function Clock() {
                   >
                     <i className={`fas ${currentStatus.buttonIcon} me-2`}></i>
                     {loading ? 'Processing...' : currentStatus.buttonText}
-                    {user?.isClockedIn && selectedLocation && ` (${currentLocations.length} active location${currentLocations.length !== 1 ? 's' : ''})`}
+                    {user?.isClockedIn && selectedLocation && ` (currently at ${currentLocation?.name})`}
                     {!user?.isClockedIn && selectedLocation && ` at ${selectedLocation.name}`}
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* Multi-Location Guide */}
+            {/* FIXED: Single Location Work Guide */}
             <div className="card">
               <div className="card-header">
                 <h6 className="mb-0">
                   <i className="fas fa-info-circle me-2"></i>
-                  Multi-Location Work Guide
+                  Location-Based Work Guide
                 </h6>
               </div>
               <div className="card-body">
@@ -374,26 +367,26 @@ export default function Clock() {
                   <div className="col-md-6">
                     <h6 className="text-primary">How It Works:</h6>
                     <ul className="list-unstyled small">
-                      <li><i className="fas fa-check text-success me-2"></i>Clock in at your primary location</li>
-                      <li><i className="fas fa-check text-success me-2"></i>Add additional locations as needed</li>
-                      <li><i className="fas fa-check text-success me-2"></i>Work across multiple sites simultaneously</li>
-                      <li><i className="fas fa-check text-success me-2"></i>Remove locations when you're done there</li>
-                      <li><i className="fas fa-check text-success me-2"></i>Clock out ends your shift at all locations</li>
+                      <li><i className="fas fa-check text-success me-2"></i>Clock in at your selected location</li>
+                      <li><i className="fas fa-check text-success me-2"></i>Work at one location at a time</li>
+                      <li><i className="fas fa-check text-success me-2"></i>Change locations when needed</li>
+                      <li><i className="fas fa-check text-success me-2"></i>Clock out when your shift ends</li>
+                      <li><i className="fas fa-check text-success me-2"></i>All location changes are tracked</li>
                     </ul>
                   </div>
                   <div className="col-md-6">
                     <h6 className="text-info">Benefits:</h6>
                     <ul className="list-unstyled small">
-                      <li><i className="fas fa-star text-warning me-2"></i>Track time across multiple sites</li>
-                      <li><i className="fas fa-star text-warning me-2"></i>Accurate location-based reporting</li>
-                      <li><i className="fas fa-star text-warning me-2"></i>Flexible work arrangements</li>
-                      <li><i className="fas fa-star text-warning me-2"></i>Better project allocation</li>
+                      <li><i className="fas fa-star text-warning me-2"></i>Clear location tracking</li>
+                      <li><i className="fas fa-star text-warning me-2"></i>Accurate work location records</li>
+                      <li><i className="fas fa-star text-warning me-2"></i>Simplified presence management</li>
+                      <li><i className="fas fa-star text-warning me-2"></i>Better resource allocation</li>
                       <li><i className="fas fa-star text-warning me-2"></i>Comprehensive activity logs</li>
                     </ul>
                   </div>
                 </div>
 
-                {/* Current Status Summary */}
+                {/* FIXED: Current Status Summary */}
                 <div className="mt-4 pt-3 border-top">
                   <div className="row g-3 text-center">
                     <div className="col-3">
@@ -409,8 +402,8 @@ export default function Clock() {
                       <small className="text-muted">Position</small>
                     </div>
                     <div className="col-3">
-                      <div className="fw-bold text-warning">{currentLocations.length}</div>
-                      <small className="text-muted">Active Locations</small>
+                      <div className="fw-bold text-warning">{currentLocation ? '1' : '0'}</div>
+                      <small className="text-muted">Active Location</small>
                     </div>
                   </div>
                 </div>
@@ -436,6 +429,22 @@ export default function Clock() {
                         </div>
                       )
                     })}
+                  </div>
+                </div>
+
+                {/* FIXED: Single Location Policy Notice */}
+                <div className="mt-4 pt-3 border-top">
+                  <div className="alert alert-info mb-0">
+                    <h6 className="alert-heading">
+                      <i className="fas fa-map-marker-alt me-2"></i>
+                      Location Policy:
+                    </h6>
+                    <p className="mb-0 small">
+                      Staff can only be present at <strong>one location at a time</strong>. 
+                      When you change locations, you'll be automatically checked out from your current location 
+                      and checked in to the new location. This ensures accurate tracking and compliance with 
+                      workplace policies.
+                    </p>
                   </div>
                 </div>
               </div>

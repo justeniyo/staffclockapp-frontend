@@ -21,15 +21,20 @@ export default function VerifyResetOTP() {
     try {
       const otpData = activeOTPs[email]
       
+      console.log('Verifying reset OTP:', { email, providedOTP: otp, storedData: otpData, currentTime: Date.now() })
+      
       if (!otpData || otpData.type !== 'password_reset') {
         throw new Error('No password reset request found')
       }
 
-      if (otpData.otp !== otp) {
+      // FIXED: Proper string comparison for OTP
+      if (otpData.otp.toString() !== otp.toString()) {
+        console.log('Reset OTP mismatch:', { provided: otp, expected: otpData.otp })
         throw new Error('Invalid verification code')
       }
 
       if (Date.now() > otpData.expires) {
+        console.log('Reset OTP expired:', { currentTime: Date.now(), expires: otpData.expires })
         throw new Error('Code expired. Request a new one.')
       }
 
@@ -73,6 +78,19 @@ export default function VerifyResetOTP() {
             <i className="fas fa-key me-2"></i>
             Verify Reset Code
           </div>
+          
+          {/* Debug info for demo */}
+          {activeOTPs[email] && (
+            <div className="alert alert-warning mb-3">
+              <div className="small">
+                <strong>Demo Code:</strong> {activeOTPs[email].otp}
+                <br/>
+                <small className="text-muted">
+                  Expires: {new Date(activeOTPs[email].expires).toLocaleTimeString()}
+                </small>
+              </div>
+            </div>
+          )}
           
           <form onSubmit={handleSubmit}>
             <div className="mb-3">
