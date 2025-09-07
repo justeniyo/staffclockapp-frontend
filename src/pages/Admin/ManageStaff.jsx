@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import { getFullName, getUserById } from '../../config/seedUsers'
+import { getFullName, getUserById, isCEO } from '../../config/seedUsers'
 
 export default function ManageStaff(){
   const { 
@@ -14,13 +14,16 @@ export default function ManageStaff(){
     getFilterState
   } = useAuth()
   
-  // FILTER STATE PERSISTENCE
+  // ENHANCED: Filter state persistence with intelligent defaults
   const savedFilters = getFilterState('admin-manage-staff') || {
     search: '',
     department: '',
     role: '',
     status: 'active',
-    manager: ''
+    manager: '',
+    location: '',
+    accessLevel: '',
+    hierarchy: ''
   }
 
   const [filters, setFilters] = useState(savedFilters)
@@ -33,7 +36,7 @@ export default function ManageStaff(){
   const [editingUser, setEditingUser] = useState(null)
   const [editForm, setEditForm] = useState({})
   
-  // DEACTIVATION MODALS - REPLACE BROWSER ALERTS
+  // ENHANCED: Deactivation modals with CEO handling
   const [showDeactivateModal, setShowDeactivateModal] = useState(null)
   const [deactivateReason, setDeactivateReason] = useState('')
   const [showCeoReplacementModal, setShowCeoReplacementModal] = useState(null)
@@ -41,11 +44,39 @@ export default function ManageStaff(){
 
   const departmentsList = Object.values(departments).filter(dept => dept.isActive)
   const locationsList = Object.values(locations).filter(loc => loc.isActive)
-  const managers = Object.entries(allUsers).filter(([email, user]) => 
-    user.isManager && user.isActive
-  )
+  
+  // ENHANCED: Smart manager filtering based on selected department
+  const getRelevantManagers = () => {
+    const allManagers = Object.entries(allUsers).filter(([email, user]) => 
+      user.isManager && user.isActive
+    )
+    
+    if (filters.department) {
+      // First show managers from the same department
+      const sameDeptManagers = allManagers.filter(([email, user]) => 
+        user.department === filters.department
+      )
+      
+      // Then add executives and CEO
+      const executives = allManagers.filter(([email, user]) => 
+        user.department === 'Executive' || isCEO(user)
+      )
+      
+      // Combine and deduplicate
+      const combined = [...sameDeptManagers, ...executives]
+      const unique = combined.filter((item, index, self) => 
+        index === self.findIndex(t => t[1].id === item[1].id)
+      )
+      
+      return unique
+    }
+    
+    return allManagers
+  }
 
-  // Convert allUsers object to array with computed fields
+  const relevantManagers = getRelevantManagers()
+
+  // ENHANCED: Convert allUsers object to array with computed fields and CEO handling
   const usersArray = useMemo(() => {
     return Object.entries(allUsers)
       .filter(([email, user]) => user.role !== 'system')
@@ -54,20 +85,34 @@ export default function ManageStaff(){
         email, 
         staffName: getFullName(user),
         managerName: user.managerId ? getFullName(getUserById(user.managerId)) : 'None',
-        locationName: user.assignedLocationId ? locations[user.assignedLocationId]?.name : 'Unknown'
+        locationName: user.assignedLocationId ? locations[user.assignedLocationId]?.name : 'Unknown',
+        displayRole: isCEO(user) ? 'CEO (Staff)' : user.role,
+        hierarchyLevel: getHierarchyLevel(user),
+        canAccessManagerPortal: user.isManager && user.role === 'staff'
       }))
   }, [allUsers, locations])
 
-  // Advanced filtering and sorting
+  // Helper function to determine hierarchy level
+  const getHierarchyLevel = (user) => {
+    if (isCEO(user)) return 'Executive - CEO'
+    if (user.role === 'admin') return 'System - Admin'
+    if (user.role === 'security') return 'Security - Guard'
+    if (user.department === 'Executive' && user.isManager) return 'Executive - C-Level'
+    if (user.isManager) return 'Management - Department'
+    return 'Staff - Regular'
+  }
+
+  // ENHANCED: Advanced filtering and sorting with intelligent logic
   const filteredAndSortedStaff = useMemo(() => {
     let filtered = usersArray
 
-    // Apply filters
+    // Apply filters with enhanced logic
     if (filters.search) {
       filtered = filtered.filter(user => 
         user.staffName.toLowerCase().includes(filters.search.toLowerCase()) ||
         user.email.toLowerCase().includes(filters.search.toLowerCase()) ||
-        user.jobTitle?.toLowerCase().includes(filters.search.toLowerCase())
+        user.jobTitle?.toLowerCase().includes(filters.search.toLowerCase()) ||
+        user.phone?.includes(filters.search)
       )
     }
 
@@ -76,14 +121,38 @@ export default function ManageStaff(){
     }
 
     if (filters.role) {
-      filtered = filtered.filter(user => user.role === filters.role)
+      if (filters.role === 'ceo') {
+        filtered = filtered.filter(user => isCEO(user))
+      } else {
+        filtered = filtered.filter(user => user.role === filters.role && !isCEO(user))
+      }
     }
 
     if (filters.manager) {
       filtered = filtered.filter(user => user.managerId === filters.manager)
     }
 
-    // Updated status filtering
+    if (filters.location) {
+      filtered = filtered.filter(user => user.assignedLocationId === filters.location)
+    }
+
+    if (filters.accessLevel) {
+      if (filters.accessLevel === 'ceo') {
+        filtered = filtered.filter(user => isCEO(user))
+      } else if (filters.accessLevel === 'executive') {
+        filtered = filtered.filter(user => user.department === 'Executive' && !isCEO(user))
+      } else if (filters.accessLevel === 'manager') {
+        filtered = filtered.filter(user => user.isManager && user.role === 'staff' && !isCEO(user))
+      } else if (filters.accessLevel === 'staff') {
+        filtered = filtered.filter(user => !user.isManager && user.role === 'staff')
+      }
+    }
+
+    if (filters.hierarchy) {
+      filtered = filtered.filter(user => user.hierarchyLevel === filters.hierarchy)
+    }
+
+    // ENHANCED: Status filtering with more options
     if (filters.status !== 'all') {
       if (filters.status === 'verified') {
         filtered = filtered.filter(user => user.verified === true)
@@ -97,6 +166,9 @@ export default function ManageStaff(){
         filtered = filtered.filter(user => user.isClockedIn === true)
       } else if (filters.status === 'managers') {
         filtered = filtered.filter(user => user.isManager === true)
+      } else if (filters.status === 'ceo_reports') {
+        const ceo = Object.values(allUsers).find(u => isCEO(u))
+        filtered = filtered.filter(user => user.managerId === ceo?.id)
       }
     }
 
@@ -156,6 +228,7 @@ export default function ManageStaff(){
       department: user.department,
       jobTitle: user.jobTitle || '',
       role: user.role,
+      subRole: user.subRole || '',
       isManager: user.isManager,
       managerId: user.managerId || '',
       isActive: user.isActive,
@@ -167,8 +240,8 @@ export default function ManageStaff(){
   const saveEdit = () => {
     const userToUpdate = allUsers[editingUser]
     
-    // Validation
-    if (editForm.role === 'ceo' && editForm.managerId) {
+    // ENHANCED: Validation with CEO handling
+    if (editForm.subRole === 'ceo' && editForm.managerId) {
       setEditForm(prev => ({ ...prev, managerId: '' }))
       return
     }
@@ -178,8 +251,14 @@ export default function ManageStaff(){
       return
     }
     
-    if (editForm.role !== 'ceo' && !editForm.managerId) {
+    if (editForm.role !== 'admin' && editForm.role !== 'security' && editForm.subRole !== 'ceo' && !editForm.managerId) {
       return // Don't save without manager
+    }
+
+    // CEO gets automatic manager privileges
+    if (editForm.subRole === 'ceo') {
+      editForm.isManager = true
+      editForm.department = 'Executive'
     }
 
     updateStaff(editingUser, editForm)
@@ -192,41 +271,34 @@ export default function ManageStaff(){
     setEditForm({})
   }
 
-  // HANDLE DEACTIVATION - CEO CHECK
+  // ENHANCED: Handle deactivation with CEO protection
   const handleDeactivateUser = async () => {
     const userToDeactivate = allUsers[showDeactivateModal.email]
     
     // CHECK IF CEO NEEDS REPLACEMENT
-    if (userToDeactivate.role === 'ceo') {
+    if (isCEO(userToDeactivate)) {
       setShowCeoReplacementModal(showDeactivateModal)
       setShowDeactivateModal(null)
       return
     }
 
-    // REGULAR USER DEACTIVATION
     if (!deactivateReason.trim()) {
-      return // Don't proceed without reason
+      return
     }
 
     try {
       await deactivateUser(showDeactivateModal.email, deactivateReason)
       setShowDeactivateModal(null)
       setDeactivateReason('')
-      // SUCCESS NOTIFICATION - NO BROWSER ALERT
     } catch (err) {
       console.error('Deactivation error:', err.message)
-      // ERROR NOTIFICATION - NO BROWSER ALERT
     }
   }
 
-  // CEO DEACTIVATION WITH REPLACEMENT
+  // ENHANCED: CEO deactivation with replacement
   const handleCeoDeactivation = async () => {
-    if (!replacementCeoEmail) {
-      return // Don't proceed without replacement
-    }
-
-    if (!deactivateReason.trim()) {
-      return // Don't proceed without reason
+    if (!replacementCeoEmail || !deactivateReason.trim()) {
+      return
     }
 
     try {
@@ -234,20 +306,16 @@ export default function ManageStaff(){
       setShowCeoReplacementModal(null)
       setReplacementCeoEmail('')
       setDeactivateReason('')
-      // SUCCESS NOTIFICATION - NO BROWSER ALERT
     } catch (err) {
       console.error('CEO deactivation error:', err.message)
-      // ERROR NOTIFICATION - NO BROWSER ALERT
     }
   }
 
   const handleReactivateUser = async (email) => {
     try {
       await reactivateUser(email)
-      // SUCCESS NOTIFICATION - NO BROWSER ALERT
     } catch (err) {
       console.error('Reactivation error:', err.message)
-      // ERROR NOTIFICATION - NO BROWSER ALERT
     }
   }
 
@@ -257,21 +325,53 @@ export default function ManageStaff(){
       department: '',
       role: '',
       status: 'active',
-      manager: ''
+      manager: '',
+      location: '',
+      accessLevel: '',
+      hierarchy: ''
     }
     setFilters(defaultFilters)
     setCurrentPage(1)
-    saveFilterState('admin-manage-staff', defaultFilters) // PERSIST CLEAR
+    saveFilterState('admin-manage-staff', defaultFilters)
   }
 
-  const getRoleBadge = (role) => {
+  // ENHANCED: Quick filter presets
+  const applyQuickFilter = (preset) => {
+    let newFilters = { ...filters }
+    
+    switch (preset) {
+      case 'ceo_team':
+        const ceo = Object.values(allUsers).find(u => isCEO(u))
+        newFilters = { ...filters, manager: ceo?.id || '', status: 'active' }
+        break
+      case 'managers':
+        newFilters = { ...filters, status: 'managers', role: '' }
+        break
+      case 'unverified':
+        newFilters = { ...filters, status: 'unverified' }
+        break
+      case 'executives':
+        newFilters = { ...filters, department: 'Executive', status: 'active' }
+        break
+      case 'on_duty':
+        newFilters = { ...filters, status: 'on_duty' }
+        break
+      default:
+        break
+    }
+    
+    handleFilterChange(newFilters)
+  }
+
+  const getRoleBadge = (user) => {
+    if (isCEO(user)) return 'bg-warning text-dark'
+    
     const badges = {
       staff: 'bg-primary',
       admin: 'bg-danger',
-      security: 'bg-warning text-dark',
-      ceo: 'bg-success'
+      security: 'bg-info'
     }
-    return badges[role] || 'bg-secondary'
+    return badges[user.role] || 'bg-secondary'
   }
 
   const getSortIcon = (key) => {
@@ -279,15 +379,15 @@ export default function ManageStaff(){
     return sortConfig.direction === 'asc' ? 'fas fa-sort-up text-primary' : 'fas fa-sort-down text-primary'
   }
 
-  // Get potential managers for editing
-  const getPotentialManagers = (role, department) => {
+  // ENHANCED: Get potential managers with smart filtering
+  const getPotentialManagers = (role, subRole, department) => {
     const usersList = Object.values(allUsers)
     
-    if (role === 'ceo') return []
+    if (subRole === 'ceo') return []
     
     if (role === 'admin' || role === 'security') {
       return usersList.filter(user => 
-        (user.role === 'admin' || user.role === 'ceo') && 
+        (user.role === 'admin' || isCEO(user)) && 
         user.isActive
       )
     }
@@ -310,16 +410,17 @@ export default function ManageStaff(){
     )
   }
 
-  // Get potential CEO replacements (active staff who are managers)
+  // Get potential CEO replacements
   const getPotentialCeoReplacements = () => {
     return Object.entries(allUsers).filter(([email, user]) => 
       user.role === 'staff' && 
       user.isActive && 
-      user.isManager
+      user.isManager &&
+      !isCEO(user)
     )
   }
 
-  // Statistics
+  // ENHANCED: Statistics with CEO and hierarchy awareness
   const stats = useMemo(() => {
     return {
       total: usersArray.length,
@@ -327,9 +428,14 @@ export default function ManageStaff(){
       inactive: usersArray.filter(u => !u.isActive).length,
       managers: usersArray.filter(u => u.isManager).length,
       unverified: usersArray.filter(u => !u.verified).length,
-      onDuty: usersArray.filter(u => u.isClockedIn).length
+      onDuty: usersArray.filter(u => u.isClockedIn).length,
+      ceo: usersArray.filter(u => isCEO(u)).length,
+      executives: usersArray.filter(u => u.department === 'Executive' && !isCEO(u)).length
     }
   }, [usersArray])
+
+  // ENHANCED: Get unique hierarchy levels for filtering
+  const hierarchyLevels = [...new Set(usersArray.map(user => user.hierarchyLevel))].sort()
 
   return (
     <div>
@@ -343,7 +449,7 @@ export default function ManageStaff(){
       </div>
       
       <div className="page-content">
-        {/* Statistics Cards */}
+        {/* ENHANCED: Statistics Cards with CEO tracking */}
         <div className="row g-3 mb-4">
           <div className="col-md-2">
             <div className="card text-center">
@@ -364,15 +470,23 @@ export default function ManageStaff(){
           <div className="col-md-2">
             <div className="card text-center">
               <div className="card-body">
-                <h4 className="text-danger">{stats.inactive}</h4>
-                <p className="mb-0 small">Inactive</p>
+                <h4 className="text-warning">{stats.ceo}</h4>
+                <p className="mb-0 small">CEO</p>
               </div>
             </div>
           </div>
           <div className="col-md-2">
             <div className="card text-center">
               <div className="card-body">
-                <h4 className="text-info">{stats.managers}</h4>
+                <h4 className="text-info">{stats.executives}</h4>
+                <p className="mb-0 small">Executives</p>
+              </div>
+            </div>
+          </div>
+          <div className="col-md-2">
+            <div className="card text-center">
+              <div className="card-body">
+                <h4 className="text-secondary">{stats.managers}</h4>
                 <p className="mb-0 small">Managers</p>
               </div>
             </div>
@@ -380,26 +494,55 @@ export default function ManageStaff(){
           <div className="col-md-2">
             <div className="card text-center">
               <div className="card-body">
-                <h4 className="text-warning">{stats.unverified}</h4>
+                <h4 className="text-danger">{stats.unverified}</h4>
                 <p className="mb-0 small">Unverified</p>
-              </div>
-            </div>
-          </div>
-          <div className="col-md-2">
-            <div className="card text-center">
-              <div className="card-body">
-                <h4 className="text-secondary">{stats.onDuty}</h4>
-                <p className="mb-0 small">On Duty</p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Enhanced Filters */}
+        {/* ENHANCED: Quick Filter Presets */}
         <div className="card mb-4">
           <div className="card-header">
-            <div className="d-flex justify-content-between align-items-center">
-              <h6 className="mb-0">Advanced Filters</h6>
+            <h6 className="mb-0">Quick Filters</h6>
+          </div>
+          <div className="card-body">
+            <div className="d-flex flex-wrap gap-2">
+              <button 
+                className="btn btn-sm btn-outline-warning"
+                onClick={() => applyQuickFilter('ceo_team')}
+              >
+                <i className="fas fa-crown me-1"></i>
+                CEO's Team
+              </button>
+              <button 
+                className="btn btn-sm btn-outline-primary"
+                onClick={() => applyQuickFilter('executives')}
+              >
+                <i className="fas fa-users-cog me-1"></i>
+                Executives
+              </button>
+              <button 
+                className="btn btn-sm btn-outline-info"
+                onClick={() => applyQuickFilter('managers')}
+              >
+                <i className="fas fa-user-tie me-1"></i>
+                All Managers
+              </button>
+              <button 
+                className="btn btn-sm btn-outline-success"
+                onClick={() => applyQuickFilter('on_duty')}
+              >
+                <i className="fas fa-user-check me-1"></i>
+                On Duty
+              </button>
+              <button 
+                className="btn btn-sm btn-outline-danger"
+                onClick={() => applyQuickFilter('unverified')}
+              >
+                <i className="fas fa-user-clock me-1"></i>
+                Unverified
+              </button>
               <button 
                 className="btn btn-sm btn-outline-secondary"
                 onClick={clearFilters}
@@ -407,6 +550,18 @@ export default function ManageStaff(){
                 <i className="fas fa-times me-1"></i>
                 Clear All
               </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ENHANCED: Advanced Filters with intelligent options */}
+        <div className="card mb-4">
+          <div className="card-header">
+            <div className="d-flex justify-content-between align-items-center">
+              <h6 className="mb-0">Advanced Filters</h6>
+              <small className="text-muted">
+                {filters.department && `Managers filtered for ${filters.department}`}
+              </small>
             </div>
           </div>
           <div className="card-body">
@@ -420,7 +575,7 @@ export default function ManageStaff(){
                     className="form-control"
                     value={filters.search}
                     onChange={(e) => handleFilterChange({...filters, search: e.target.value})}
-                    placeholder="Name, email, or job title..."
+                    placeholder="Name, email, phone, or job title..."
                   />
                 </div>
               </div>
@@ -429,7 +584,7 @@ export default function ManageStaff(){
                 <select 
                   className="form-select"
                   value={filters.department}
-                  onChange={(e) => handleFilterChange({...filters, department: e.target.value})}
+                  onChange={(e) => handleFilterChange({...filters, department: e.target.value, manager: ''})}
                 >
                   <option value="">All Departments</option>
                   {departmentsList.map(dept => (
@@ -445,23 +600,28 @@ export default function ManageStaff(){
                   onChange={(e) => handleFilterChange({...filters, role: e.target.value})}
                 >
                   <option value="">All Roles</option>
+                  <option value="ceo">CEO</option>
                   <option value="staff">Staff</option>
                   <option value="admin">Admin</option>
                   <option value="security">Security</option>
-                  <option value="ceo">CEO</option>
                 </select>
               </div>
               <div className="col-lg-2 col-md-6">
-                <label className="form-label">Manager</label>
+                <label className="form-label">
+                  Manager
+                  {filters.department && (
+                    <small className="text-info ms-1">({filters.department})</small>
+                  )}
+                </label>
                 <select 
                   className="form-select"
                   value={filters.manager}
                   onChange={(e) => handleFilterChange({...filters, manager: e.target.value})}
                 >
                   <option value="">All Managers</option>
-                  {managers.map(([email, manager]) => (
+                  {relevantManagers.map(([email, manager]) => (
                     <option key={manager.id} value={manager.id}>
-                      {getFullName(manager)}
+                      {getFullName(manager)} {isCEO(manager) && '(CEO)'}
                     </option>
                   ))}
                 </select>
@@ -480,6 +640,49 @@ export default function ManageStaff(){
                   <option value="unverified">Unverified</option>
                   <option value="on_duty">On Duty</option>
                   <option value="managers">Managers Only</option>
+                  <option value="ceo_reports">CEO's Direct Reports</option>
+                </select>
+              </div>
+              
+              {/* Additional filter row */}
+              <div className="col-lg-3 col-md-6">
+                <label className="form-label">Location</label>
+                <select 
+                  className="form-select"
+                  value={filters.location}
+                  onChange={(e) => handleFilterChange({...filters, location: e.target.value})}
+                >
+                  <option value="">All Locations</option>
+                  {locationsList.map(loc => (
+                    <option key={loc.id} value={loc.id}>{loc.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="col-lg-3 col-md-6">
+                <label className="form-label">Access Level</label>
+                <select 
+                  className="form-select"
+                  value={filters.accessLevel}
+                  onChange={(e) => handleFilterChange({...filters, accessLevel: e.target.value})}
+                >
+                  <option value="">All Access Levels</option>
+                  <option value="ceo">CEO Level</option>
+                  <option value="executive">Executive Level</option>
+                  <option value="manager">Manager Level</option>
+                  <option value="staff">Staff Level</option>
+                </select>
+              </div>
+              <div className="col-lg-6 col-md-6">
+                <label className="form-label">Hierarchy Level</label>
+                <select 
+                  className="form-select"
+                  value={filters.hierarchy}
+                  onChange={(e) => handleFilterChange({...filters, hierarchy: e.target.value})}
+                >
+                  <option value="">All Hierarchy Levels</option>
+                  {hierarchyLevels.map(level => (
+                    <option key={level} value={level}>{level}</option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -534,7 +737,7 @@ export default function ManageStaff(){
                           className="user-select-none"
                         >
                           <div className="d-flex justify-content-between align-items-center">
-                            Name & Job Title
+                            Name & Details
                             <i className={getSortIcon('staffName')}></i>
                           </div>
                         </th>
@@ -560,12 +763,12 @@ export default function ManageStaff(){
                         </th>
                         <th 
                           role="button" 
-                          onClick={() => handleSort('role')}
+                          onClick={() => handleSort('displayRole')}
                           className="user-select-none"
                         >
                           <div className="d-flex justify-content-between align-items-center">
-                            Role
-                            <i className={getSortIcon('role')}></i>
+                            Role & Access
+                            <i className={getSortIcon('displayRole')}></i>
                           </div>
                         </th>
                         <th 
@@ -619,7 +822,8 @@ export default function ManageStaff(){
                                 {user.jobTitle && <div className="text-muted small">{user.jobTitle}</div>}
                                 <div className="d-flex gap-1 mt-1">
                                   {user.isManager && <span className="badge bg-info">Manager</span>}
-                                  {user.role === 'ceo' && <span className="badge bg-warning text-dark">CEO</span>}
+                                  {isCEO(user) && <span className="badge bg-warning text-dark">CEO</span>}
+                                  {user.canAccessManagerPortal && <span className="badge bg-success">Portal Access</span>}
                                 </div>
                               </div>
                             )}
@@ -633,7 +837,8 @@ export default function ManageStaff(){
                               <select 
                                 className="form-select form-select-sm"
                                 value={editForm.department || ''}
-                                onChange={(e) => setEditForm(prev => ({...prev, department: e.target.value}))}
+                                onChange={(e) => setEditForm(prev => ({...prev, department: e.target.value, managerId: ''}))}
+                                disabled={editForm.subRole === 'ceo'}
                               >
                                 <option value="">Select Department</option>
                                 {departmentsList.map(dept => (
@@ -653,32 +858,52 @@ export default function ManageStaff(){
                                   onChange={(e) => setEditForm(prev => ({
                                     ...prev, 
                                     role: e.target.value,
-                                    isManager: e.target.value === 'ceo' ? true : 
-                                              (e.target.value === 'admin' || e.target.value === 'security') ? false : prev.isManager,
-                                    managerId: e.target.value === 'ceo' ? '' : prev.managerId
+                                    subRole: (e.target.value !== 'staff') ? '' : prev.subRole,
+                                    isManager: (e.target.value === 'admin' || e.target.value === 'security') ? false : prev.isManager,
+                                    managerId: (e.target.value === 'staff' && prev.subRole === 'ceo') ? '' : prev.managerId
                                   }))}
                                 >
                                   <option value="staff">Staff</option>
                                   <option value="admin">Admin</option>
                                   <option value="security">Security</option>
-                                  <option value="ceo">CEO</option>
                                 </select>
                                 {editForm.role === 'staff' && (
-                                  <div className="form-check">
-                                    <input 
-                                      type="checkbox" 
-                                      className="form-check-input"
-                                      checked={editForm.isManager || false}
-                                      onChange={(e) => setEditForm(prev => ({...prev, isManager: e.target.checked}))}
-                                    />
-                                    <label className="form-check-label small">Manager</label>
-                                  </div>
+                                  <>
+                                    <select 
+                                      className="form-select form-select-sm mb-2"
+                                      value={editForm.subRole || ''}
+                                      onChange={(e) => setEditForm(prev => ({
+                                        ...prev, 
+                                        subRole: e.target.value,
+                                        isManager: e.target.value === 'ceo' ? true : prev.isManager,
+                                        managerId: e.target.value === 'ceo' ? '' : prev.managerId,
+                                        department: e.target.value === 'ceo' ? 'Executive' : prev.department
+                                      }))}
+                                    >
+                                      <option value="">Regular Staff</option>
+                                      <option value="ceo">CEO</option>
+                                    </select>
+                                    {editForm.subRole !== 'ceo' && (
+                                      <div className="form-check">
+                                        <input 
+                                          type="checkbox" 
+                                          className="form-check-input"
+                                          checked={editForm.isManager || false}
+                                          onChange={(e) => setEditForm(prev => ({...prev, isManager: e.target.checked}))}
+                                        />
+                                        <label className="form-check-label small">Manager</label>
+                                      </div>
+                                    )}
+                                  </>
                                 )}
                               </div>
                             ) : (
-                              <span className={`badge ${getRoleBadge(user.role)}`}>
-                                {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
-                              </span>
+                              <div>
+                                <span className={`badge ${getRoleBadge(user)}`}>
+                                  {user.displayRole}
+                                </span>
+                                <div className="small text-muted mt-1">{user.hierarchyLevel}</div>
+                              </div>
                             )}
                           </td>
                           <td>
@@ -687,12 +912,13 @@ export default function ManageStaff(){
                                 className="form-select form-select-sm"
                                 value={editForm.managerId || ''}
                                 onChange={(e) => setEditForm(prev => ({...prev, managerId: e.target.value}))}
-                                disabled={editForm.role === 'ceo'}
+                                disabled={editForm.subRole === 'ceo'}
                               >
-                                <option value="">{editForm.role === 'ceo' ? 'No Manager (CEO)' : 'Select Manager'}</option>
-                                {getPotentialManagers(editForm.role, editForm.department).map(manager => (
+                                <option value="">{editForm.subRole === 'ceo' ? 'No Manager (CEO)' : 'Select Manager'}</option>
+                                {getPotentialManagers(editForm.role, editForm.subRole, editForm.department).map(manager => (
                                   <option key={manager.id} value={manager.id}>
                                     {getFullName(manager)} ({manager.jobTitle || manager.role})
+                                    {isCEO(manager) && ' (CEO)'}
                                   </option>
                                 ))}
                               </select>
@@ -830,7 +1056,7 @@ export default function ManageStaff(){
           </div>
         </div>
 
-        {/* REGULAR DEACTIVATE USER MODAL - REPLACES BROWSER ALERTS */}
+        {/* REGULAR DEACTIVATE USER MODAL */}
         {showDeactivateModal && (
           <div className="modal show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
             <div className="modal-dialog">
@@ -849,7 +1075,8 @@ export default function ManageStaff(){
                 <div className="modal-body">
                   <div className="alert alert-warning">
                     <strong>Warning:</strong> This action will deactivate the user account for{' '}
-                    <strong>{getFullName(showDeactivateModal)}</strong>.
+                    <strong>{getFullName(showDeactivateModal)}</strong>
+                    {isCEO(showDeactivateModal) && ' (CEO)'}.
                     The user will no longer be able to log in or access the system.
                   </div>
                   
@@ -888,7 +1115,7 @@ export default function ManageStaff(){
           </div>
         )}
 
-        {/* CEO REPLACEMENT MODAL - NEW FEATURE */}
+        {/* ENHANCED: CEO REPLACEMENT MODAL */}
         {showCeoReplacementModal && (
           <div className="modal show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
             <div className="modal-dialog modal-lg">
@@ -953,6 +1180,7 @@ export default function ManageStaff(){
                         <li><strong>Current CEO:</strong> {getFullName(showCeoReplacementModal)} will be deactivated</li>
                         <li><strong>New CEO:</strong> {getFullName(allUsers[replacementCeoEmail])} will be promoted to CEO</li>
                         <li>The new CEO will automatically become a manager with no superior</li>
+                        <li>The new CEO will get access to both executive and manager portals</li>
                         <li>All CEO privileges will be transferred immediately</li>
                       </ul>
                     </div>

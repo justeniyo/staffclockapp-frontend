@@ -1,5 +1,5 @@
-// Backend-ready seed data structure with separate location model
-// This mirrors the PostgreSQL database schema
+// Enhanced seed data structure - Sequelize ORM compatible
+// This mirrors PostgreSQL database schema with proper foreign key relationships
 
 // Separate locations model
 export const seedLocations = {
@@ -35,6 +35,15 @@ export const seedLocations = {
     name: "Branch Office",
     address: "789 Corporate Blvd, Uptown",
     type: "office", 
+    isActive: true,
+    createdAt: "2024-01-15T09:00:00Z",
+    updatedAt: "2024-01-15T09:00:00Z"
+  },
+  "loc_005": {
+    id: "loc_005",
+    name: "Field Operations",
+    address: "Mobile Operations Base",
+    type: "field",
     isActive: true,
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
@@ -110,11 +119,13 @@ export const seedDepartments = {
 }
 
 export const seedUsers = {
-  // CEO - Top of hierarchy, automatically a manager
+  // CEO - ENHANCED: Dual role as CEO & Staff Manager with team members
   "ceo@company.com": { 
     id: "usr_001",
+    email: "ceo@company.com",
     password: "password", // Will be hashed in backend
-    role: "ceo", 
+    role: "staff", // CHANGED: CEO is now a staff member to access manager portal
+    subRole: "ceo", // NEW: Track CEO status separately
     firstName: "Sarah", 
     lastName: "Chen",
     department: "Executive", 
@@ -126,6 +137,8 @@ export const seedUsers = {
     isClockedIn: false,
     jobTitle: "Chief Executive Officer",
     assignedLocationId: "loc_001", // Main Office
+    currentLocationIds: [], // NEW: Multi-location support
+    accessLevel: "ceo", // NEW: Access level for permissions
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
   },
@@ -133,6 +146,7 @@ export const seedUsers = {
   // System Administrator - Outside hierarchy
   "admin@company.com": { 
     id: "usr_002",
+    email: "admin@company.com",
     password: "password", 
     role: "admin", 
     firstName: "Admin", 
@@ -146,6 +160,8 @@ export const seedUsers = {
     isClockedIn: false,
     jobTitle: "System Administrator",
     assignedLocationId: "loc_001", // Main Office
+    currentLocationIds: [],
+    accessLevel: "admin",
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
   },
@@ -153,6 +169,7 @@ export const seedUsers = {
   // Security Guard - Third party, reports to admin for system access
   "security@company.com": { 
     id: "usr_003",
+    email: "security@company.com",
     password: "password", 
     role: "security", 
     firstName: "Security", 
@@ -166,13 +183,16 @@ export const seedUsers = {
     isClockedIn: true,
     jobTitle: "Security Officer",
     assignedLocationId: "loc_001", // Main Office assignment
+    currentLocationIds: ["loc_001"], // Currently at main office
+    accessLevel: "security",
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
   },
 
-  // C-Level Executives - Reports to CEO
+  // C-Level Executives - Reports to CEO (who can manage them as a manager)
   "cfo@company.com": {
     id: "usr_004",
+    email: "cfo@company.com",
     password: "password",
     role: "staff",
     firstName: "Michael",
@@ -186,12 +206,15 @@ export const seedUsers = {
     isClockedIn: false,
     jobTitle: "Chief Financial Officer",
     assignedLocationId: "loc_001", // Main Office
+    currentLocationIds: [],
+    accessLevel: "executive",
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
   },
 
   "cto@company.com": {
     id: "usr_005",
+    email: "cto@company.com",
     password: "password",
     role: "staff",
     firstName: "Jennifer",
@@ -205,12 +228,15 @@ export const seedUsers = {
     isClockedIn: false,
     jobTitle: "Chief Technology Officer",
     assignedLocationId: "loc_001", // Main Office
+    currentLocationIds: [],
+    accessLevel: "executive",
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
   },
 
   "coo@company.com": {
     id: "usr_006",
+    email: "coo@company.com",
     password: "password",
     role: "staff",
     firstName: "David",
@@ -224,6 +250,8 @@ export const seedUsers = {
     isClockedIn: false,
     jobTitle: "Chief Operating Officer",
     assignedLocationId: "loc_001", // Main Office
+    currentLocationIds: [],
+    accessLevel: "executive",
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
   },
@@ -231,6 +259,7 @@ export const seedUsers = {
   // Department Managers - Report to relevant C-Level Executives
   "it.manager@company.com": { 
     id: "usr_007",
+    email: "it.manager@company.com",
     password: "password", 
     role: "staff", 
     firstName: "Mike", 
@@ -244,12 +273,15 @@ export const seedUsers = {
     isActive: true,
     jobTitle: "IT Director",
     assignedLocationId: "loc_001", // Main Office
+    currentLocationIds: [],
+    accessLevel: "manager",
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
   },
 
   "hr.manager@company.com": { 
     id: "usr_008",
+    email: "hr.manager@company.com",
     password: "password", 
     role: "staff", 
     firstName: "Lisa", 
@@ -263,12 +295,15 @@ export const seedUsers = {
     isActive: true,
     jobTitle: "HR Director",
     assignedLocationId: "loc_001", // Main Office
+    currentLocationIds: [],
+    accessLevel: "manager",
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
   },
 
   "sales.manager@company.com": { 
     id: "usr_009",
+    email: "sales.manager@company.com",
     password: "password", 
     role: "staff", 
     firstName: "Robert", 
@@ -282,12 +317,15 @@ export const seedUsers = {
     isActive: true,
     jobTitle: "Sales Director",
     assignedLocationId: "loc_001", // Main Office
+    currentLocationIds: ["loc_001"],
+    accessLevel: "manager",
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
   },
 
   "operations.manager@company.com": { 
     id: "usr_010",
+    email: "operations.manager@company.com",
     password: "password", 
     role: "staff", 
     firstName: "Maria", 
@@ -301,12 +339,15 @@ export const seedUsers = {
     isActive: true,
     jobTitle: "Operations Director",
     assignedLocationId: "loc_002", // Warehouse
+    currentLocationIds: [],
+    accessLevel: "manager",
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
   },
 
   "finance.manager@company.com": {
     id: "usr_011",
+    email: "finance.manager@company.com",
     password: "password",
     role: "staff",
     firstName: "David",
@@ -320,13 +361,16 @@ export const seedUsers = {
     isActive: true,
     jobTitle: "Finance Director",
     assignedLocationId: "loc_001", // Main Office
+    currentLocationIds: [],
+    accessLevel: "manager",
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
   },
 
-  // Regular Staff
+  // Regular Staff - Multi-location capable
   "dev1@company.com": { 
     id: "usr_012",
+    email: "dev1@company.com",
     password: "password", 
     role: "staff", 
     firstName: "Alex", 
@@ -340,12 +384,15 @@ export const seedUsers = {
     isManager: false,
     jobTitle: "Senior Developer",
     assignedLocationId: "loc_001", // Main Office
+    currentLocationIds: ["loc_001", "loc_003"], // Working at office and remote
+    accessLevel: "staff",
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
   },
 
   "dev2@company.com": { 
     id: "usr_013",
+    email: "dev2@company.com",
     password: "password", 
     role: "staff", 
     firstName: "Emma", 
@@ -359,12 +406,15 @@ export const seedUsers = {
     isManager: false,
     jobTitle: "Frontend Developer",
     assignedLocationId: "loc_003", // Remote
+    currentLocationIds: [],
+    accessLevel: "staff",
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
   },
 
   "sysadmin@company.com": { 
     id: "usr_014",
+    email: "sysadmin@company.com",
     password: "password", 
     role: "staff", 
     firstName: "Carlos", 
@@ -378,12 +428,15 @@ export const seedUsers = {
     isManager: false,
     jobTitle: "System Administrator",
     assignedLocationId: "loc_001", // Main Office
+    currentLocationIds: ["loc_001", "loc_002"], // Working at office and warehouse
+    accessLevel: "staff",
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
   },
 
   "hr.specialist@company.com": { 
     id: "usr_015",
+    email: "hr.specialist@company.com",
     password: "password", 
     role: "staff", 
     firstName: "James", 
@@ -397,12 +450,15 @@ export const seedUsers = {
     isManager: false,
     jobTitle: "HR Specialist",
     assignedLocationId: "loc_001", // Main Office
+    currentLocationIds: [],
+    accessLevel: "staff",
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
   },
 
   "sales1@company.com": { 
     id: "usr_016",
+    email: "sales1@company.com",
     password: "password", 
     role: "staff", 
     firstName: "Jennifer", 
@@ -416,12 +472,15 @@ export const seedUsers = {
     isManager: false,
     jobTitle: "Sales Representative",
     assignedLocationId: "loc_001", // Main Office
+    currentLocationIds: ["loc_001"],
+    accessLevel: "staff",
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
   },
 
   "sales2@company.com": { 
     id: "usr_017",
+    email: "sales2@company.com",
     password: "password", 
     role: "staff", 
     firstName: "Christopher", 
@@ -435,12 +494,15 @@ export const seedUsers = {
     isManager: false,
     jobTitle: "Account Executive",
     assignedLocationId: "loc_003", // Remote
+    currentLocationIds: [],
+    accessLevel: "staff",
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
   },
 
   "ops1@company.com": { 
     id: "usr_018",
+    email: "ops1@company.com",
     password: "password", 
     role: "staff", 
     firstName: "Thomas", 
@@ -454,12 +516,15 @@ export const seedUsers = {
     isManager: false,
     jobTitle: "Operations Coordinator",
     assignedLocationId: "loc_002", // Warehouse
+    currentLocationIds: ["loc_002", "loc_005"], // Working at warehouse and field
+    accessLevel: "staff",
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
   },
 
   "finance1@company.com": {
     id: "usr_019",
+    email: "finance1@company.com",
     password: "password",
     role: "staff",
     firstName: "Sophie",
@@ -473,6 +538,8 @@ export const seedUsers = {
     isManager: false,
     jobTitle: "Financial Analyst",
     assignedLocationId: "loc_001", // Main Office
+    currentLocationIds: [],
+    accessLevel: "staff",
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
   },
@@ -480,6 +547,7 @@ export const seedUsers = {
   // Inactive user example
   "former.employee@company.com": { 
     id: "usr_020",
+    email: "former.employee@company.com",
     password: "password", 
     role: "staff", 
     firstName: "John", 
@@ -493,6 +561,8 @@ export const seedUsers = {
     isManager: false,
     jobTitle: "Former Developer",
     assignedLocationId: "loc_001", // Main Office
+    currentLocationIds: [],
+    accessLevel: "staff",
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
   },
@@ -500,6 +570,7 @@ export const seedUsers = {
   // Unverified new user - needs verification then password reset
   "new.user@company.com": { 
     id: "usr_021",
+    email: "new.user@company.com",
     password: "password", 
     role: "staff", 
     firstName: "Jane", 
@@ -513,21 +584,23 @@ export const seedUsers = {
     isManager: false,
     jobTitle: "HR Assistant",
     assignedLocationId: "loc_001", // Main Office
+    currentLocationIds: [],
+    accessLevel: "staff",
     createdAt: "2024-09-01T09:00:00Z",
     updatedAt: "2024-09-01T09:00:00Z"
   }
 }
 
-// Updated leave requests - removed Personal leave type
+// Enhanced leave requests with CEO team requests
 export const seedLeaveRequests = [
-  // Regular staff requesting annual leave
+  // CEO team requests - CEO can approve these as a manager
   {
     id: "lr_001",
-    staffId: "usr_012", // Alex Rodriguez (dev1)
+    staffId: "usr_004", // CFO requesting leave from CEO
     type: "Annual",
     startDate: "2025-09-15",
     endDate: "2025-09-17", 
-    reason: null, // Not required for Annual leave
+    reason: null,
     status: "pending",
     requestDate: "2025-09-01T10:30:00Z",
     processedBy: null,
@@ -535,177 +608,100 @@ export const seedLeaveRequests = [
     processingNotes: null
   },
 
-  // Manager requesting leave (approved by upper manager)
   {
     id: "lr_002",
-    staffId: "usr_007", // IT Director requesting leave
-    type: "Annual",
+    staffId: "usr_005", // CTO requesting leave from CEO
+    type: "Emergency",
     startDate: "2025-09-20",
     endDate: "2025-09-22", 
+    reason: "Family emergency requiring immediate attention",
+    status: "pending",
+    requestDate: "2025-09-02T14:20:00Z",
+    processedBy: null,
+    processedDate: null,
+    processingNotes: null
+  },
+
+  // Regular staff requesting annual leave
+  {
+    id: "lr_003",
+    staffId: "usr_012", // Alex Rodriguez (dev1)
+    type: "Annual",
+    startDate: "2025-09-25",
+    endDate: "2025-09-27", 
+    reason: null,
+    status: "pending",
+    requestDate: "2025-09-01T10:30:00Z",
+    processedBy: null,
+    processedDate: null,
+    processingNotes: null
+  },
+
+  // More requests...
+  {
+    id: "lr_004",
+    staffId: "usr_007", // IT Director requesting leave
+    type: "Annual",
+    startDate: "2025-10-01",
+    endDate: "2025-10-03", 
     reason: null,
     status: "approved",
     requestDate: "2025-08-25T14:20:00Z",
     processedBy: "usr_005", // Approved by CTO
     processedDate: "2025-08-26T09:15:00Z",
     processingNotes: null
-  },
-
-  // Executive requesting leave (approved by CEO)
-  {
-    id: "lr_003",
-    staffId: "usr_005", // CTO requesting leave  
-    type: "Annual",
-    startDate: "2025-10-01",
-    endDate: "2025-10-03",
-    reason: null,
-    status: "approved", 
-    requestDate: "2025-09-01T16:45:00Z",
-    processedBy: "usr_001", // Approved by CEO
-    processedDate: "2025-09-02T08:30:00Z",
-    processingNotes: null
-  },
-
-  // Emergency leave with reason
-  {
-    id: "lr_004",
-    staffId: "usr_015", // HR Specialist
-    type: "Emergency",
-    startDate: "2025-09-05",
-    endDate: "2025-09-06", 
-    reason: "Family emergency - hospitalization",
-    status: "approved",
-    requestDate: "2025-09-04T22:10:00Z",
-    processedBy: "usr_008", // Approved by HR Director
-    processedDate: "2025-09-05T07:00:00Z",
-    processingNotes: "Approved immediately due to emergency nature. Hope family is well."
-  },
-
-  // Sick leave with reason
-  {
-    id: "lr_005",
-    staffId: "usr_016", // Sales Rep
-    type: "Sick",
-    startDate: "2025-08-28",
-    endDate: "2025-08-30", 
-    reason: "Flu symptoms, doctor recommended rest",
-    status: "approved",
-    requestDate: "2025-08-27T08:15:00Z",
-    processedBy: "usr_009", // Approved by Sales Director
-    processedDate: "2025-08-27T14:20:00Z",
-    processingNotes: "Get well soon. Medical certificate required for return."
-  },
-
-  // Rejected leave request
-  {
-    id: "lr_006",
-    staffId: "usr_017", // Sales Account Executive
-    type: "Annual",
-    startDate: "2025-09-20",
-    endDate: "2025-09-20", 
-    reason: null,
-    status: "rejected",
-    requestDate: "2025-09-02T16:45:00Z",
-    processedBy: "usr_009", // Rejected by Sales Director
-    processedDate: "2025-09-02T18:30:00Z",
-    processingNotes: "Cannot approve due to critical client presentation scheduled."
-  },
-
-  // Department manager requesting sick leave
-  {
-    id: "lr_007",
-    staffId: "usr_008", // HR Director
-    type: "Sick",
-    startDate: "2025-09-10",
-    endDate: "2025-09-12",
-    reason: "Medical procedure scheduled",
-    status: "approved",
-    requestDate: "2025-08-30T11:20:00Z",
-    processedBy: "usr_001", // Approved by CEO
-    processedDate: "2025-08-30T15:45:00Z",
-    processingNotes: "Take care of yourself. Delegate urgent matters to HR Specialist."
-  },
-
-  // Finance team leave
-  {
-    id: "lr_008",
-    staffId: "usr_019", // Finance Analyst
-    type: "Annual",
-    startDate: "2025-09-25",
-    endDate: "2025-09-27",
-    reason: null,
-    status: "pending",
-    requestDate: "2025-09-03T09:30:00Z",
-    processedBy: null,
-    processedDate: null,
-    processingNotes: null
   }
 ]
 
-// Updated clock activities with location references
+// Enhanced clock activities with multi-location support
 export const seedClockActivities = [
   {
     id: "ca_001",
-    staffId: "usr_012", // Alex Rodriguez
+    staffId: "usr_012", // Alex Rodriguez - multi-location
     action: "clock_in",
     timestamp: "2025-09-06T09:15:23Z",
-    locationId: "loc_001", // Main Office
-    location: "Main Office" // Keep for backward compatibility
-  },
-  {
-    id: "ca_002", 
-    staffId: "usr_012", // Alex Rodriguez
-    action: "clock_out",
-    timestamp: "2025-09-05T17:30:45Z",
-    locationId: "loc_001", // Main Office
+    locationId: "loc_001",
     location: "Main Office"
   },
   {
-    id: "ca_003",
-    staffId: "usr_016", // Jennifer Martinez
-    action: "clock_in", 
-    timestamp: "2025-09-06T08:45:12Z",
-    locationId: "loc_003", // Remote
+    id: "ca_002",
+    staffId: "usr_012", // Alex Rodriguez - switching to remote
+    action: "location_add",
+    timestamp: "2025-09-06T11:30:00Z",
+    locationId: "loc_003",
     location: "Remote"
   },
   {
+    id: "ca_003",
+    staffId: "usr_014", // Carlos Martinez - multi-location
+    action: "clock_in", 
+    timestamp: "2025-09-06T08:45:12Z",
+    locationId: "loc_001",
+    location: "Main Office"
+  },
+  {
     id: "ca_004",
-    staffId: "usr_018", // Thomas Anderson
-    action: "clock_in",
-    timestamp: "2025-09-06T07:00:00Z", 
-    locationId: "loc_002", // Warehouse
+    staffId: "usr_014", // Carlos Martinez - adding warehouse
+    action: "location_add",
+    timestamp: "2025-09-06T13:15:00Z",
+    locationId: "loc_002",
     location: "Warehouse"
   },
   {
     id: "ca_005",
-    staffId: "usr_014", // Carlos Martinez
+    staffId: "usr_018", // Thomas Anderson - field work
     action: "clock_in",
-    timestamp: "2025-09-06T09:30:15Z",
-    locationId: "loc_001", // Main Office
-    location: "Main Office"
+    timestamp: "2025-09-06T07:00:00Z", 
+    locationId: "loc_002",
+    location: "Warehouse"
   },
   {
     id: "ca_006",
-    staffId: "usr_009", // Sales Director
-    action: "clock_in",
-    timestamp: "2025-09-06T08:00:00Z",
-    locationId: "loc_001", // Main Office
-    location: "Main Office"
-  },
-  {
-    id: "ca_007",
-    staffId: "usr_015", // HR Specialist
-    action: "clock_out",
-    timestamp: "2025-09-05T16:45:30Z",
-    locationId: "loc_001", // Main Office
-    location: "Main Office"
-  },
-  {
-    id: "ca_008",
-    staffId: "usr_003", // Security Officer
-    action: "clock_in",
-    timestamp: "2025-09-06T06:00:00Z",
-    locationId: "loc_001", // Main Office
-    location: "Main Office"
+    staffId: "usr_018", // Thomas Anderson - adding field location
+    action: "location_add",
+    timestamp: "2025-09-06T14:30:00Z",
+    locationId: "loc_005",
+    location: "Field Operations"
   }
 ]
 
@@ -736,6 +732,16 @@ export const getUserInitials = (user) => {
   return (firstName.charAt(0) + lastName.charAt(0)).toUpperCase()
 }
 
+// Helper function to check if user is CEO
+export const isCEO = (user) => {
+  return user?.subRole === 'ceo' || user?.accessLevel === 'ceo'
+}
+
+// Helper function to check if user can access manager portal
+export const canAccessManagerPortal = (user) => {
+  return user?.isManager && (user?.role === 'staff' || isCEO(user))
+}
+
 // Helper function to get user by ID (for backend compatibility)
 export const getUserById = (userId) => {
   return Object.values(seedUsers).find(user => user.id === userId)
@@ -756,100 +762,68 @@ export const getDepartmentById = (departmentId) => {
   return seedDepartments[departmentId]
 }
 
-// Helper function to get manager hierarchy
-export const getManagerHierarchy = (userId) => {
-  const user = getUserById(userId)
-  if (!user || !user.managerId) return []
-  
-  const manager = getUserById(user.managerId)
-  if (!manager) return []
-  
-  return [manager, ...getManagerHierarchy(manager.id)]
-}
-
-// Available leave types (removed Personal)
+// Available leave types
 export const LEAVE_TYPES = ['Annual', 'Sick', 'Emergency']
 
-// Database schema reference for backend implementation:
+// Sequelize Model Definitions for Backend Reference
 /*
--- Locations table
-CREATE TABLE locations (
-  id VARCHAR(50) PRIMARY KEY,
-  name VARCHAR(100) NOT NULL,
-  address TEXT,
-  type VARCHAR(50) NOT NULL CHECK (type IN ('office', 'warehouse', 'remote', 'field')),
-  is_active BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+const User = sequelize.define('User', {
+  id: { type: DataTypes.STRING, primaryKey: true },
+  email: { type: DataTypes.STRING, unique: true, allowNull: false },
+  password: { type: DataTypes.STRING, allowNull: false },
+  firstName: { type: DataTypes.STRING, allowNull: false },
+  lastName: { type: DataTypes.STRING, allowNull: false },
+  role: { type: DataTypes.ENUM('admin', 'security', 'staff'), allowNull: false },
+  subRole: { type: DataTypes.STRING, allowNull: true }, // For CEO
+  department: { type: DataTypes.STRING, allowNull: false },
+  phone: { type: DataTypes.STRING, allowNull: true },
+  jobTitle: { type: DataTypes.STRING, allowNull: true },
+  isManager: { type: DataTypes.BOOLEAN, defaultValue: false },
+  managerId: { type: DataTypes.STRING, allowNull: true },
+  verified: { type: DataTypes.BOOLEAN, defaultValue: false },
+  isActive: { type: DataTypes.BOOLEAN, defaultValue: true },
+  isClockedIn: { type: DataTypes.BOOLEAN, defaultValue: false },
+  assignedLocationId: { type: DataTypes.STRING, allowNull: false },
+  currentLocationIds: { type: DataTypes.JSON, defaultValue: [] },
+  accessLevel: { type: DataTypes.STRING, allowNull: true }
+}, {
+  timestamps: true
+});
 
--- Departments table
-CREATE TABLE departments (
-  id VARCHAR(50) PRIMARY KEY,
-  name VARCHAR(100) NOT NULL,
-  description TEXT,
-  is_active BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+const Location = sequelize.define('Location', {
+  id: { type: DataTypes.STRING, primaryKey: true },
+  name: { type: DataTypes.STRING, allowNull: false },
+  address: { type: DataTypes.TEXT, allowNull: true },
+  type: { type: DataTypes.ENUM('office', 'warehouse', 'remote', 'field'), allowNull: false },
+  isActive: { type: DataTypes.BOOLEAN, defaultValue: true }
+}, {
+  timestamps: true
+});
 
--- Users table (updated)
-CREATE TABLE users (
-  id VARCHAR(50) PRIMARY KEY,
-  email VARCHAR(255) UNIQUE NOT NULL,
-  password_hash VARCHAR(255) NOT NULL,
-  first_name VARCHAR(100) NOT NULL,
-  last_name VARCHAR(100) NOT NULL,
-  role VARCHAR(20) NOT NULL CHECK (role IN ('ceo', 'admin', 'security', 'staff')),
-  department VARCHAR(100) REFERENCES departments(name),
-  phone VARCHAR(20),
-  job_title VARCHAR(100),
-  is_manager BOOLEAN DEFAULT FALSE,
-  manager_id VARCHAR(50) REFERENCES users(id),
-  verified BOOLEAN DEFAULT FALSE,
-  is_active BOOLEAN DEFAULT TRUE,
-  is_clocked_in BOOLEAN DEFAULT FALSE,
-  assigned_location_id VARCHAR(50) REFERENCES locations(id),
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+const Department = sequelize.define('Department', {
+  id: { type: DataTypes.STRING, primaryKey: true },
+  name: { type: DataTypes.STRING, allowNull: false },
+  description: { type: DataTypes.TEXT, allowNull: true },
+  isActive: { type: DataTypes.BOOLEAN, defaultValue: true }
+}, {
+  timestamps: true
+});
 
--- Leave requests table (updated)
-CREATE TABLE leave_requests (
-  id VARCHAR(50) PRIMARY KEY,
-  staff_id VARCHAR(50) NOT NULL REFERENCES users(id),
-  type VARCHAR(20) NOT NULL CHECK (type IN ('Annual', 'Sick', 'Emergency')),
-  start_date DATE NOT NULL,
-  end_date DATE NOT NULL,
-  reason TEXT, -- Only for Emergency and Sick
-  status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
-  request_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  processed_by VARCHAR(50) REFERENCES users(id),
-  processed_date TIMESTAMP,
-  processing_notes TEXT, -- Only for Emergency and Sick
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+const ClockActivity = sequelize.define('ClockActivity', {
+  id: { type: DataTypes.STRING, primaryKey: true },
+  staffId: { type: DataTypes.STRING, allowNull: false },
+  action: { type: DataTypes.ENUM('clock_in', 'clock_out', 'location_add', 'location_remove'), allowNull: false },
+  timestamp: { type: DataTypes.DATE, allowNull: false },
+  locationId: { type: DataTypes.STRING, allowNull: false },
+  location: { type: DataTypes.STRING, allowNull: false } // Backward compatibility
+}, {
+  timestamps: true
+});
 
--- Clock activities table (updated)
-CREATE TABLE clock_activities (
-  id VARCHAR(50) PRIMARY KEY,
-  staff_id VARCHAR(50) NOT NULL REFERENCES users(id),
-  action VARCHAR(20) NOT NULL CHECK (action IN ('clock_in', 'clock_out')),
-  timestamp TIMESTAMP NOT NULL,
-  location_id VARCHAR(50) REFERENCES locations(id),
-  location VARCHAR(100) NOT NULL, -- For backward compatibility
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- OTP table for verification
-CREATE TABLE otps (
-  id SERIAL PRIMARY KEY,
-  email VARCHAR(255) NOT NULL,
-  otp VARCHAR(6) NOT NULL,
-  type VARCHAR(20) NOT NULL CHECK (type IN ('verification', 'password_reset')),
-  expires_at TIMESTAMP NOT NULL,
-  attempts INTEGER DEFAULT 0,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+// Associations
+User.belongsTo(User, { as: 'Manager', foreignKey: 'managerId' });
+User.hasMany(User, { as: 'DirectReports', foreignKey: 'managerId' });
+User.belongsTo(Location, { as: 'AssignedLocation', foreignKey: 'assignedLocationId' });
+ClockActivity.belongsTo(User, { as: 'Staff', foreignKey: 'staffId' });
+ClockActivity.belongsTo(Location, { foreignKey: 'locationId' });
 */

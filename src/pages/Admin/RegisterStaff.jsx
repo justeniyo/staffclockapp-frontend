@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import { getFullName, getUserById } from '../../config/seedUsers'
+import { getFullName, getUserById, isCEO, canAccessManagerPortal } from '../../config/seedUsers'
 
 export default function RegisterStaff() {
   const { 
@@ -31,9 +31,11 @@ export default function RegisterStaff() {
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [confirmationData, setConfirmationData] = useState(null)
   
-  // Department and location management
+  // ENHANCED: Department and location management with detailed confirmation
   const [showCreateDepartment, setShowCreateDepartment] = useState(false)
   const [showCreateLocation, setShowCreateLocation] = useState(false)
+  const [showDepartmentConfirmation, setShowDepartmentConfirmation] = useState(false)
+  const [showLocationConfirmation, setShowLocationConfirmation] = useState(false)
   const [newDepartment, setNewDepartment] = useState({ name: '', description: '' })
   const [newLocation, setNewLocation] = useState({ name: '', address: '', type: 'office' })
 
@@ -44,19 +46,19 @@ export default function RegisterStaff() {
   const getPotentialManagers = () => {
     const usersList = Object.values(allUsers)
     
-    if (formData.role === 'ceo') {
+    if (formData.role === 'staff' && formData.subRole === 'ceo') {
       return [] // CEO reports to no one
     }
     
     if (formData.role === 'admin' || formData.role === 'security') {
       // Admin and Security can report to admin or CEO
       return usersList.filter(user => 
-        (user.role === 'admin' || user.role === 'ceo') && 
+        (user.role === 'admin' || isCEO(user)) && 
         user.isActive
       )
     }
     
-    // For staff members
+    // For staff members (including CEO)
     if (formData.department) {
       // First try to find managers in the same department
       const departmentManagers = usersList.filter(user => 
@@ -72,7 +74,7 @@ export default function RegisterStaff() {
       
       // If no department managers, show executives and CEO
       return usersList.filter(user => 
-        (user.role === 'ceo' || 
+        (isCEO(user) || 
          (user.role === 'staff' && user.isManager && 
           ['Executive', 'Administration'].includes(user.department))) &&
         user.isActive
@@ -97,12 +99,12 @@ export default function RegisterStaff() {
       }
       
       // Validate manager selection for non-CEO roles
-      if (formData.role !== 'ceo' && !formData.managerId) {
+      if (!(formData.role === 'staff' && formData.subRole === 'ceo') && !formData.managerId) {
         throw new Error('Manager selection is required')
       }
       
       // Validate role-specific rules
-      if (formData.role === 'ceo' && formData.managerId) {
+      if (formData.role === 'staff' && formData.subRole === 'ceo' && formData.managerId) {
         throw new Error('CEO cannot have a manager')
       }
       
@@ -127,7 +129,8 @@ export default function RegisterStaff() {
         ...formData,
         managerName: manager ? getFullName(manager) : 'None',
         locationName: location?.name || 'Unknown',
-        departmentName: department?.name || formData.department
+        departmentName: department?.name || formData.department,
+        displayRole: formData.subRole === 'ceo' ? 'CEO (Staff)' : formData.role
       })
       
       setShowConfirmation(true)
@@ -180,7 +183,16 @@ export default function RegisterStaff() {
       // Reset manager when role changes
       if (name === 'role') {
         newData.managerId = ''
-        newData.isManager = value === 'ceo' ? true : false // CEO is always a manager
+        newData.isManager = value === 'staff' && prev.subRole === 'ceo' ? true : false
+      }
+      
+      // Handle CEO sub-role
+      if (name === 'subRole') {
+        if (value === 'ceo') {
+          newData.isManager = true
+          newData.managerId = ''
+          newData.department = 'Executive'
+        }
       }
       
       // Reset manager when department changes
@@ -188,21 +200,18 @@ export default function RegisterStaff() {
         newData.managerId = ''
       }
       
-      // CEO cannot have isManager false
-      if (name === 'role' && value === 'ceo') {
-        newData.isManager = true
-      }
-      
       // Admin and Security cannot be managers
       if (name === 'role' && (value === 'admin' || value === 'security')) {
         newData.isManager = false
+        newData.subRole = ''
       }
       
       return newData
     })
   }
 
-  const handleCreateDepartment = async (e) => {
+  // ENHANCED: Department creation with detailed confirmation
+  const handleDepartmentSubmit = (e) => {
     e.preventDefault()
     setError('')
     
@@ -219,17 +228,28 @@ export default function RegisterStaff() {
         throw new Error('Department already exists')
       }
 
+      // Show confirmation modal instead of creating immediately
+      setShowDepartmentConfirmation(true)
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  const confirmDepartmentCreation = async () => {
+    try {
       const dept = await createDepartment(newDepartment)
       setFormData(prev => ({ ...prev, department: dept.name }))
       setNewDepartment({ name: '', description: '' })
       setShowCreateDepartment(false)
+      setShowDepartmentConfirmation(false)
       setSuccess('Department created successfully!')
     } catch (err) {
       setError(err.message)
     }
   }
 
-  const handleCreateLocation = async (e) => {
+  // ENHANCED: Location creation with detailed confirmation
+  const handleLocationSubmit = (e) => {
     e.preventDefault()
     setError('')
     
@@ -246,10 +266,20 @@ export default function RegisterStaff() {
         throw new Error('Location already exists')
       }
 
+      // Show confirmation modal instead of creating immediately
+      setShowLocationConfirmation(true)
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  const confirmLocationCreation = async () => {
+    try {
       const location = await createLocation(newLocation)
       setFormData(prev => ({ ...prev, assignedLocationId: location.id }))
       setNewLocation({ name: '', address: '', type: 'office' })
       setShowCreateLocation(false)
+      setShowLocationConfirmation(false)
       setSuccess('Location created successfully!')
     } catch (err) {
       setError(err.message)
@@ -258,15 +288,19 @@ export default function RegisterStaff() {
 
   const getManagerDisplayName = (manager) => {
     const title = manager.jobTitle || manager.role.charAt(0).toUpperCase() + manager.role.slice(1)
-    return `${getFullName(manager)} - ${title} (${manager.department})`
+    const ceoLabel = isCEO(manager) ? ' (CEO)' : ''
+    return `${getFullName(manager)} - ${title} (${manager.department})${ceoLabel}`
   }
 
-  const getRoleDescription = (role) => {
+  const getRoleDescription = (role, subRole = '') => {
+    if (role === 'staff' && subRole === 'ceo') {
+      return 'Chief Executive Officer - highest level in organization hierarchy with manager portal access'
+    }
+    
     const descriptions = {
       staff: 'Regular employee who can be assigned to departments and report to managers',
       admin: 'System administrator with full access to manage staff and system settings',
-      security: 'Third-party security guard assigned to monitor specific sites',
-      ceo: 'Chief Executive Officer - highest level in organization hierarchy'
+      security: 'Third-party security guard assigned to monitor specific sites'
     }
     return descriptions[role] || ''
   }
@@ -276,10 +310,21 @@ export default function RegisterStaff() {
     return formData.role === 'staff'
   }
 
+  const getLocationTypeDescription = (type) => {
+    const descriptions = {
+      office: 'Standard office environment with desk work',
+      warehouse: 'Industrial warehouse or storage facility',
+      remote: 'Work from home or remote location',
+      field: 'Mobile or outdoor work assignments'
+    }
+    return descriptions[type] || ''
+  }
+
   return (
     <div>
       <div className="page-header">
         <h2 className="page-title">Register New Staff</h2>
+        <p className="mb-0 text-muted">Create new user accounts with detailed confirmation</p>
       </div>
       
       <div className="page-content">
@@ -349,12 +394,31 @@ export default function RegisterStaff() {
                         <option value="staff">Staff</option>
                         <option value="admin">Admin</option>
                         <option value="security">Security</option>
-                        <option value="ceo">CEO</option>
                       </select>
                       <small className="text-muted">
-                        {getRoleDescription(formData.role)}
+                        {getRoleDescription(formData.role, formData.subRole)}
                       </small>
                     </div>
+                    
+                    {/* CEO Sub-role Option for Staff */}
+                    {formData.role === 'staff' && (
+                      <div className="col-md-6">
+                        <label className="form-label">Executive Level</label>
+                        <select 
+                          className="form-select"
+                          name="subRole"
+                          value={formData.subRole || ''}
+                          onChange={handleChange}
+                        >
+                          <option value="">Regular Staff</option>
+                          <option value="ceo">Chief Executive Officer</option>
+                        </select>
+                        <small className="text-muted">
+                          CEO gets automatic manager portal access
+                        </small>
+                      </div>
+                    )}
+                    
                     <div className="col-md-6">
                       <label className="form-label">
                         Department *
@@ -372,13 +436,18 @@ export default function RegisterStaff() {
                         value={formData.department}
                         onChange={handleChange}
                         required
+                        disabled={formData.subRole === 'ceo'}
                       >
                         <option value="">Select Department</option>
                         {departmentsList.map(dept => (
                           <option key={dept.id} value={dept.name}>{dept.name}</option>
                         ))}
                       </select>
+                      {formData.subRole === 'ceo' && (
+                        <small className="text-info">CEO is automatically assigned to Executive department</small>
+                      )}
                     </div>
+                    
                     <div className="col-md-6">
                       <label className="form-label">Job Title</label>
                       <input 
@@ -387,9 +456,10 @@ export default function RegisterStaff() {
                         name="jobTitle"
                         value={formData.jobTitle}
                         onChange={handleChange}
-                        placeholder="e.g. Senior Developer, Sales Manager"
+                        placeholder={formData.subRole === 'ceo' ? 'Chief Executive Officer' : 'e.g. Senior Developer, Sales Manager'}
                       />
                     </div>
+                    
                     <div className="col-md-6">
                       <label className="form-label">
                         Location Assignment *
@@ -417,7 +487,7 @@ export default function RegisterStaff() {
                       </select>
                     </div>
                     
-                    {/* Staff-specific fields - only show for staff role */}
+                    {/* Staff-specific fields */}
                     {showStaffFields() && (
                       <div className="col-md-6">
                         <div className="form-check mt-4">
@@ -425,18 +495,22 @@ export default function RegisterStaff() {
                             type="checkbox" 
                             className="form-check-input"
                             name="isManager"
-                            checked={formData.isManager}
+                            checked={formData.isManager || formData.subRole === 'ceo'}
                             onChange={handleChange}
+                            disabled={formData.subRole === 'ceo'}
                           />
                           <label className="form-check-label">
                             Is Manager
+                            {formData.subRole === 'ceo' && (
+                              <span className="text-info ms-2">(CEO is automatically a manager)</span>
+                            )}
                           </label>
                         </div>
                       </div>
                     )}
                     
                     {/* Manager Selection */}
-                    {formData.role !== 'ceo' && (
+                    {!(formData.role === 'staff' && formData.subRole === 'ceo') && (
                       <div className="col-12">
                         <label className="form-label">
                           Reports To *
@@ -449,7 +523,7 @@ export default function RegisterStaff() {
                           name="managerId"
                           value={formData.managerId}
                           onChange={handleChange}
-                          required={formData.role !== 'ceo'}
+                          required
                         >
                           <option value="">Select Manager</option>
                           {potentialManagers.map(manager => (
@@ -468,7 +542,7 @@ export default function RegisterStaff() {
                     )}
                     
                     {/* Hierarchy Preview */}
-                    {formData.managerId && (
+                    {(formData.managerId || formData.subRole === 'ceo') && (
                       <div className="col-12">
                         <div className="alert alert-info">
                           <h6 className="alert-heading">
@@ -477,12 +551,19 @@ export default function RegisterStaff() {
                           </h6>
                           <div className="d-flex align-items-center">
                             <span className="badge bg-primary me-2">
-                              {getFullName(formData)} ({formData.jobTitle || formData.role})
+                              {getFullName(formData)} ({formData.jobTitle || formData.subRole === 'ceo' ? 'CEO' : formData.role})
                             </span>
-                            <i className="fas fa-arrow-right mx-2"></i>
-                            <span className="badge bg-success">
-                              {getManagerDisplayName(getUserById(formData.managerId))}
-                            </span>
+                            {formData.managerId && (
+                              <>
+                                <i className="fas fa-arrow-right mx-2"></i>
+                                <span className="badge bg-success">
+                                  {getManagerDisplayName(getUserById(formData.managerId))}
+                                </span>
+                              </>
+                            )}
+                            {formData.subRole === 'ceo' && (
+                              <span className="badge bg-warning text-dark ms-2">Top Level - No Manager</span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -502,7 +583,7 @@ export default function RegisterStaff() {
               </div>
             </div>
 
-            {/* Hierarchy Information Card */}
+            {/* Enhanced Hierarchy Information Card */}
             <div className="card mt-4">
               <div className="card-header">
                 <h6 className="mb-0">
@@ -515,8 +596,8 @@ export default function RegisterStaff() {
                   <div className="col-md-6">
                     <h6>Role Hierarchy:</h6>
                     <ul className="list-unstyled">
-                      <li><i className="fas fa-crown text-warning me-2"></i><strong>CEO:</strong> Top level, no manager</li>
-                      <li><i className="fas fa-users text-primary me-2"></i><strong>Executives:</strong> Report to CEO</li>
+                      <li><i className="fas fa-crown text-warning me-2"></i><strong>CEO:</strong> Top level, manager portal access</li>
+                      <li><i className="fas fa-users text-primary me-2"></i><strong>Executives:</strong> Report to CEO, manage departments</li>
                       <li><i className="fas fa-user-tie text-info me-2"></i><strong>Department Managers:</strong> Report to Executives</li>
                       <li><i className="fas fa-user text-secondary me-2"></i><strong>Staff:</strong> Report to Department Managers</li>
                     </ul>
@@ -530,9 +611,10 @@ export default function RegisterStaff() {
                     
                     <h6 className="mt-3">Manager Rules:</h6>
                     <ul className="list-unstyled small text-muted">
-                      <li>• CEO is automatically a manager</li>
+                      <li>• CEO automatically gets manager privileges</li>
                       <li>• Admin and Security cannot be managers</li>
                       <li>• Staff can be managers of their department</li>
+                      <li>• CEO can access both executive and manager portals</li>
                     </ul>
                   </div>
                 </div>
@@ -541,7 +623,7 @@ export default function RegisterStaff() {
           </div>
         </div>
 
-        {/* CONFIRMATION MODAL - REPLACES BROWSER ALERTS */}
+        {/* ENHANCED: Staff Registration Confirmation Modal */}
         {showConfirmation && confirmationData && (
           <div className="modal show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
             <div className="modal-dialog modal-lg">
@@ -560,7 +642,7 @@ export default function RegisterStaff() {
                 <div className="modal-body">
                   <div className="alert alert-info">
                     <i className="fas fa-info-circle me-2"></i>
-                    <strong>Please review the details below before confirming registration:</strong>
+                    <strong>Please review all details carefully before confirming registration:</strong>
                   </div>
                   
                   <div className="row g-3">
@@ -582,10 +664,13 @@ export default function RegisterStaff() {
                       <label className="form-label fw-bold">Role</label>
                       <div className="p-2 bg-light rounded">
                         <span className="badge bg-primary me-2">
-                          {confirmationData.role.toUpperCase()}
+                          {confirmationData.displayRole.toUpperCase()}
                         </span>
                         {confirmationData.isManager && (
                           <span className="badge bg-info">Manager</span>
+                        )}
+                        {confirmationData.subRole === 'ceo' && (
+                          <span className="badge bg-warning text-dark ms-1">CEO Portal Access</span>
                         )}
                       </div>
                     </div>
@@ -619,6 +704,9 @@ export default function RegisterStaff() {
                       <li>A verification OTP will be sent to their email</li>
                       <li>User must verify their account and set a new password</li>
                       <li>User cannot login until verification is complete</li>
+                      {confirmationData.subRole === 'ceo' && (
+                        <li className="text-warning fw-bold">CEO will have access to both executive and manager portals</li>
+                      )}
                     </ul>
                   </div>
                 </div>
@@ -645,7 +733,7 @@ export default function RegisterStaff() {
           </div>
         )}
 
-        {/* Create Department Modal */}
+        {/* ENHANCED: Department Creation Modal with Confirmation */}
         {showCreateDepartment && (
           <div className="modal show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
             <div className="modal-dialog">
@@ -661,7 +749,7 @@ export default function RegisterStaff() {
                     onClick={() => setShowCreateDepartment(false)}
                   ></button>
                 </div>
-                <form onSubmit={handleCreateDepartment}>
+                <form onSubmit={handleDepartmentSubmit}>
                   <div className="modal-body">
                     <div className="mb-3">
                       <label className="form-label">Department Name *</label>
@@ -697,8 +785,8 @@ export default function RegisterStaff() {
                       type="submit" 
                       className="btn btn-primary"
                     >
-                      <i className="fas fa-plus me-1"></i>
-                      Create Department
+                      <i className="fas fa-search me-1"></i>
+                      Review Department
                     </button>
                   </div>
                 </form>
@@ -707,7 +795,74 @@ export default function RegisterStaff() {
           </div>
         )}
 
-        {/* Create Location Modal */}
+        {/* Department Confirmation Modal */}
+        {showDepartmentConfirmation && (
+          <div className="modal show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <div className="modal-dialog">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">
+                    <i className="fas fa-check-circle me-2"></i>
+                    Confirm Department Creation
+                  </h5>
+                  <button 
+                    type="button" 
+                    className="btn-close"
+                    onClick={() => setShowDepartmentConfirmation(false)}
+                  ></button>
+                </div>
+                <div className="modal-body">
+                  <div className="alert alert-info">
+                    <i className="fas fa-info-circle me-2"></i>
+                    <strong>Please confirm the department details:</strong>
+                  </div>
+                  
+                  <div className="mb-3">
+                    <label className="form-label fw-bold">Department Name</label>
+                    <div className="p-2 bg-light rounded">{newDepartment.name}</div>
+                  </div>
+                  
+                  <div className="mb-3">
+                    <label className="form-label fw-bold">Description</label>
+                    <div className="p-2 bg-light rounded">
+                      {newDepartment.description || 'No description provided'}
+                    </div>
+                  </div>
+                  
+                  <div className="alert alert-warning">
+                    <i className="fas fa-exclamation-triangle me-2"></i>
+                    <strong>This action will:</strong>
+                    <ul className="mb-0 mt-2">
+                      <li>Create a new department in the system</li>
+                      <li>Make it available for staff assignment</li>
+                      <li>Auto-select it for the current staff registration</li>
+                    </ul>
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary"
+                    onClick={() => setShowDepartmentConfirmation(false)}
+                  >
+                    <i className="fas fa-times me-1"></i>
+                    Cancel
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn-success"
+                    onClick={confirmDepartmentCreation}
+                  >
+                    <i className="fas fa-plus me-1"></i>
+                    Create Department
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ENHANCED: Location Creation Modal with Confirmation */}
         {showCreateLocation && (
           <div className="modal show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
             <div className="modal-dialog">
@@ -723,7 +878,7 @@ export default function RegisterStaff() {
                     onClick={() => setShowCreateLocation(false)}
                   ></button>
                 </div>
-                <form onSubmit={handleCreateLocation}>
+                <form onSubmit={handleLocationSubmit}>
                   <div className="modal-body">
                     <div className="mb-3">
                       <label className="form-label">Location Name *</label>
@@ -758,6 +913,9 @@ export default function RegisterStaff() {
                         <option value="remote">Remote</option>
                         <option value="field">Field</option>
                       </select>
+                      <small className="text-muted">
+                        {getLocationTypeDescription(newLocation.type)}
+                      </small>
                     </div>
                   </div>
                   <div className="modal-footer">
@@ -772,11 +930,92 @@ export default function RegisterStaff() {
                       type="submit" 
                       className="btn btn-primary"
                     >
-                      <i className="fas fa-plus me-1"></i>
-                      Create Location
+                      <i className="fas fa-search me-1"></i>
+                      Review Location
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Location Confirmation Modal */}
+        {showLocationConfirmation && (
+          <div className="modal show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <div className="modal-dialog">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">
+                    <i className="fas fa-check-circle me-2"></i>
+                    Confirm Location Creation
+                  </h5>
+                  <button 
+                    type="button" 
+                    className="btn-close"
+                    onClick={() => setShowLocationConfirmation(false)}
+                  ></button>
+                </div>
+                <div className="modal-body">
+                  <div className="alert alert-info">
+                    <i className="fas fa-info-circle me-2"></i>
+                    <strong>Please confirm the location details:</strong>
+                  </div>
+                  
+                  <div className="row g-3">
+                    <div className="col-md-6">
+                      <label className="form-label fw-bold">Location Name</label>
+                      <div className="p-2 bg-light rounded">{newLocation.name}</div>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label fw-bold">Type</label>
+                      <div className="p-2 bg-light rounded">
+                        <span className="badge bg-info">{newLocation.type}</span>
+                      </div>
+                    </div>
+                    <div className="col-12">
+                      <label className="form-label fw-bold">Address</label>
+                      <div className="p-2 bg-light rounded">
+                        {newLocation.address || 'No address provided'}
+                      </div>
+                    </div>
+                    <div className="col-12">
+                      <label className="form-label fw-bold">Description</label>
+                      <div className="p-2 bg-light rounded">
+                        {getLocationTypeDescription(newLocation.type)}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="alert alert-warning mt-3">
+                    <i className="fas fa-exclamation-triangle me-2"></i>
+                    <strong>This action will:</strong>
+                    <ul className="mb-0 mt-2">
+                      <li>Create a new location in the system</li>
+                      <li>Make it available for staff assignment</li>
+                      <li>Auto-select it for the current staff registration</li>
+                      <li>Enable multi-location check-ins for staff</li>
+                    </ul>
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary"
+                    onClick={() => setShowLocationConfirmation(false)}
+                  >
+                    <i className="fas fa-times me-1"></i>
+                    Cancel
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn-success"
+                    onClick={confirmLocationCreation}
+                  >
+                    <i className="fas fa-plus me-1"></i>
+                    Create Location
+                  </button>
+                </div>
               </div>
             </div>
           </div>
