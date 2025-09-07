@@ -11,7 +11,8 @@ import {
   getUserByEmail,
   getLocationById,
   getDepartmentById,
-  getManagerHierarchy,
+  isCEO,
+  canAccessManagerPortal,
   LEAVE_TYPES
 } from '../config/seedUsers'
 
@@ -99,13 +100,8 @@ export function AuthProvider({ children }) {
 
   // Backend-ready API simulation functions
   const apiCall = async (endpoint, options = {}) => {
-    // Simulate API delay
     await new Promise(resolve => setTimeout(resolve, 100))
-    
-    // This will be replaced with actual API calls
     console.log(`API Call: ${endpoint}`, options)
-    
-    // For now, return success
     return { success: true }
   }
 
@@ -126,31 +122,36 @@ export function AuthProvider({ children }) {
     if (!record || record.password !== password) throw new Error('Invalid credentials')
     if (!record.isActive) throw new Error('Account is deactivated. Please contact administrator.')
     if (!record.verified) {
-      // Generate new OTP for unverified user trying to login
       generateOTP(email, 'verification')
       throw new Error(`Account not verified. OTP sent to ${email}.||verify-account?email=${email}`)
     }
-    if (roleHint && record.role !== roleHint) throw new Error('Wrong portal for this user')
+    
+    // UPDATED: Handle CEO role hint properly
+    if (roleHint) {
+      if (roleHint === 'ceo' && !isCEO(record)) {
+        throw new Error('Wrong portal for this user')
+      } else if (roleHint !== 'ceo' && roleHint !== record.role) {
+        throw new Error('Wrong portal for this user')
+      }
+    }
     
     const u = { ...record, email }
     setUser(u)
     
-    // Backend API call simulation
     apiCall('/api/auth/login', {
       method: 'POST',
       body: { email, password, roleHint }
     })
     
-    // REDIRECT LOGIC - Always redirect to appropriate dashboard even if accessing other portals
-    if (u.role === 'staff') navigate('/clock', { replace: true })
+    // UPDATED: CEO login redirects to CEO dashboard, but they can access staff/manager portals
+    if (isCEO(u)) navigate('/ceo-dashboard', { replace: true })
+    else if (u.role === 'staff') navigate('/clock', { replace: true })
     else if (u.role === 'admin') navigate('/admin-dashboard', { replace: true })
     else if (u.role === 'security') navigate('/security-dashboard', { replace: true })
-    else if (u.role === 'ceo') navigate('/ceo-dashboard', { replace: true })
   }
 
   const logout = () => { 
     setUser(null)
-    // Backend API call simulation
     apiCall('/api/auth/logout', { method: 'POST' })
     navigate('/staff', { replace: true })
   }
@@ -165,20 +166,18 @@ export function AuthProvider({ children }) {
       [email]: {
         otp,
         expires,
-        type, // 'verification' or 'password_reset'
+        type,
         attempts: 0
       }
     }))
 
-    // Backend API call simulation
     apiCall('/api/auth/send-otp', {
       method: 'POST',
       body: { email, type, otp }
     })
 
-    // Simulate email sending
     console.log(`${type === 'verification' ? 'Verification' : 'Password Reset'} OTP sent to ${email}: ${otp}`)
-    return { success: true, otp } // In production, don't return OTP
+    return { success: true, otp }
   }
 
   const forgotPassword = async (email) => {
@@ -187,7 +186,6 @@ export function AuthProvider({ children }) {
       throw new Error('No account found with this email address')
     }
 
-    // Backend API call simulation
     await apiCall('/api/auth/forgot-password', {
       method: 'POST',
       body: { email }
@@ -204,7 +202,6 @@ export function AuthProvider({ children }) {
     }
 
     if (otpData.otp !== otp) {
-      // Increment failed attempts
       setActiveOTPs(prev => ({
         ...prev,
         [email]: { ...prev[email], attempts: prev[email].attempts + 1 }
@@ -216,20 +213,17 @@ export function AuthProvider({ children }) {
       throw new Error('Verification code has expired. Please request a new one.')
     }
 
-    // Update password in allUsers
     setAllUsers(prev => ({
       ...prev,
       [email]: { ...prev[email], password: newPassword }
     }))
 
-    // Remove used OTP
     setActiveOTPs(prev => {
       const updated = { ...prev }
       delete updated[email]
       return updated
     })
 
-    // Backend API call simulation
     await apiCall('/api/auth/reset-password', {
       method: 'POST',
       body: { email, otp, newPassword }
@@ -259,7 +253,6 @@ export function AuthProvider({ children }) {
     if (!otpData) throw new Error('No verification code found for this email')
     if (!user) throw new Error('No account found for this email')
     if (otpData.otp !== otp) {
-      // Increment failed attempts
       setActiveOTPs(prev => ({
         ...prev,
         [email]: { ...prev[email], attempts: prev[email].attempts + 1 }
@@ -268,20 +261,17 @@ export function AuthProvider({ children }) {
     }
     if (Date.now() > otpData.expires) throw new Error('Verification code has expired')
     
-    // Mark user as verified
     setAllUsers(prev => ({
       ...prev,
       [email]: { ...prev[email], verified: true }
     }))
     
-    // Remove used OTP
     setActiveOTPs(prev => {
       const updated = { ...prev }
       delete updated[email]
       return updated
     })
     
-    // Backend API call simulation
     apiCall('/api/auth/verify-otp', {
       method: 'POST',
       body: { email, otp }
@@ -290,120 +280,173 @@ export function AuthProvider({ children }) {
     return true
   }
 
-  // UPDATED: Allow location switching while on duty
+  // UPDATED: Multi-location clock functions
   const clockIn = (locationId = null) => {
-    // Default to user's assigned location or main office
     const selectedLocationId = locationId || user.assignedLocationId || 'loc_001'
     const selectedLocation = getLocationById(selectedLocationId)
     
     const activity = {
       id: `ca_${Date.now()}`,
-      staffId: user.id, // Use ID instead of email
+      staffId: user.id,
       action: 'clock_in', 
       timestamp: new Date().toISOString(),
       locationId: selectedLocationId,
-      location: selectedLocation?.name || 'Unknown Location' // Backward compatibility
+      location: selectedLocation?.name || 'Unknown Location'
     }
     
     setClockActivities(prev => [activity, ...prev])
-    setUser(prev => ({ ...prev, isClockedIn: true, currentLocationId: selectedLocationId }))
+    
+    // UPDATED: Support multiple current locations
+    setUser(prev => ({ 
+      ...prev, 
+      isClockedIn: true, 
+      currentLocationIds: [selectedLocationId] // Start with one location
+    }))
     
     setAllUsers(prev => ({
       ...prev,
-      [user.email]: { ...prev[user.email], isClockedIn: true, currentLocationId: selectedLocationId }
+      [user.email]: { 
+        ...prev[user.email], 
+        isClockedIn: true, 
+        currentLocationIds: [selectedLocationId]
+      }
     }))
 
-    // Backend API call simulation
     apiCall('/api/clock/in', {
       method: 'POST',
       body: { staffId: user.id, locationId: selectedLocationId }
     })
   }
 
-  const clockOut = (locationId = null) => {
-    // Default to user's current location or assigned location
-    const selectedLocationId = locationId || user.currentLocationId || user.assignedLocationId || 'loc_001'
-    const selectedLocation = getLocationById(selectedLocationId)
+  const clockOut = () => {
+    // Clock out from all locations
+    const currentLocations = user.currentLocationIds || []
     
-    const activity = {
-      id: `ca_${Date.now()}`,
-      staffId: user.id, // Use ID instead of email
-      action: 'clock_out',
-      timestamp: new Date().toISOString(), 
-      locationId: selectedLocationId,
-      location: selectedLocation?.name || 'Unknown Location' // Backward compatibility
-    }
+    // Create clock out activities for all current locations
+    const activities = currentLocations.map((locationId, index) => {
+      const location = getLocationById(locationId)
+      return {
+        id: `ca_${Date.now() + index}`,
+        staffId: user.id,
+        action: 'clock_out',
+        timestamp: new Date(Date.now() + index * 1000).toISOString(),
+        locationId: locationId,
+        location: location?.name || 'Unknown Location'
+      }
+    })
     
-    setClockActivities(prev => [activity, ...prev])
-    setUser(prev => ({ ...prev, isClockedIn: false, currentLocationId: null }))
+    setClockActivities(prev => [...activities, ...prev])
+    
+    setUser(prev => ({ 
+      ...prev, 
+      isClockedIn: false, 
+      currentLocationIds: [] 
+    }))
     
     setAllUsers(prev => ({
       ...prev,
-      [user.email]: { ...prev[user.email], isClockedIn: false, currentLocationId: null }
+      [user.email]: { 
+        ...prev[user.email], 
+        isClockedIn: false, 
+        currentLocationIds: [] 
+      }
     }))
 
-    // Backend API call simulation
     apiCall('/api/clock/out', {
       method: 'POST',
-      body: { staffId: user.id, locationId: selectedLocationId }
+      body: { staffId: user.id, locationIds: currentLocations }
     })
   }
 
-  // NEW: Switch location while on duty
-  const switchLocation = (newLocationId) => {
+  // NEW: Add location while on duty
+  const addLocation = (locationId) => {
     if (!user.isClockedIn) {
-      throw new Error('Cannot switch location while not clocked in')
+      throw new Error('Cannot add location while not clocked in')
     }
 
-    const oldLocationId = user.currentLocationId || user.assignedLocationId
-    const oldLocation = getLocationById(oldLocationId)
-    const newLocation = getLocationById(newLocationId)
+    const currentLocations = user.currentLocationIds || []
+    if (currentLocations.includes(locationId)) {
+      throw new Error('Already active at this location')
+    }
 
-    // Create clock out activity for old location
-    const clockOutActivity = {
-      id: `ca_${Date.now()}_out`,
+    const location = getLocationById(locationId)
+    const activity = {
+      id: `ca_${Date.now()}`,
       staffId: user.id,
-      action: 'clock_out',
+      action: 'location_add',
       timestamp: new Date().toISOString(),
-      locationId: oldLocationId,
-      location: oldLocation?.name || 'Unknown Location'
+      locationId: locationId,
+      location: location?.name || 'Unknown Location'
     }
 
-    // Create clock in activity for new location (1 second later to ensure proper ordering)
-    const clockInActivity = {
-      id: `ca_${Date.now() + 1}_in`,
-      staffId: user.id,
-      action: 'clock_in',
-      timestamp: new Date(Date.now() + 1000).toISOString(),
-      locationId: newLocationId,
-      location: newLocation?.name || 'Unknown Location'
-    }
-
-    setClockActivities(prev => [clockInActivity, clockOutActivity, ...prev])
-    setUser(prev => ({ ...prev, currentLocationId: newLocationId }))
+    setClockActivities(prev => [activity, ...prev])
+    
+    const newLocationIds = [...currentLocations, locationId]
+    setUser(prev => ({ ...prev, currentLocationIds: newLocationIds }))
     
     setAllUsers(prev => ({
       ...prev,
-      [user.email]: { ...prev[user.email], currentLocationId: newLocationId }
+      [user.email]: { ...prev[user.email], currentLocationIds: newLocationIds }
     }))
 
-    // Backend API call simulation
-    apiCall('/api/clock/switch-location', {
+    apiCall('/api/clock/add-location', {
       method: 'POST',
-      body: { staffId: user.id, fromLocationId: oldLocationId, toLocationId: newLocationId }
+      body: { staffId: user.id, locationId }
     })
 
-    return { success: true, newLocation: newLocation?.name }
+    return { success: true, location: location?.name }
+  }
+
+  // NEW: Remove location while on duty
+  const removeLocation = (locationId) => {
+    if (!user.isClockedIn) {
+      throw new Error('Cannot remove location while not clocked in')
+    }
+
+    const currentLocations = user.currentLocationIds || []
+    if (!currentLocations.includes(locationId)) {
+      throw new Error('Not currently active at this location')
+    }
+
+    if (currentLocations.length <= 1) {
+      throw new Error('Cannot remove your last active location. Use Clock Out instead.')
+    }
+
+    const location = getLocationById(locationId)
+    const activity = {
+      id: `ca_${Date.now()}`,
+      staffId: user.id,
+      action: 'location_remove',
+      timestamp: new Date().toISOString(),
+      locationId: locationId,
+      location: location?.name || 'Unknown Location'
+    }
+
+    setClockActivities(prev => [activity, ...prev])
+    
+    const newLocationIds = currentLocations.filter(id => id !== locationId)
+    setUser(prev => ({ ...prev, currentLocationIds: newLocationIds }))
+    
+    setAllUsers(prev => ({
+      ...prev,
+      [user.email]: { ...prev[user.email], currentLocationIds: newLocationIds }
+    }))
+
+    apiCall('/api/clock/remove-location', {
+      method: 'POST',
+      body: { staffId: user.id, locationId }
+    })
+
+    return { success: true, location: location?.name }
   }
 
   const submitLeaveRequest = (requestData) => {
-    // Get manager information for approval routing
     const userRecord = allUsers[user.email]
     const manager = userRecord.managerId ? getUserById(userRecord.managerId) : null
     
     const newRequest = {
       id: `lr_${Date.now()}`,
-      staffId: user.id, // Use ID instead of email
+      staffId: user.id,
       type: requestData.type,
       startDate: requestData.startDate,
       endDate: requestData.endDate,
@@ -417,7 +460,6 @@ export function AuthProvider({ children }) {
     
     setLeaveRequests(prev => [newRequest, ...prev])
 
-    // Backend API call simulation
     apiCall('/api/leave-requests', {
       method: 'POST',
       body: newRequest
@@ -432,7 +474,6 @@ export function AuthProvider({ children }) {
         ? { 
             ...req, 
             ...updatedData,
-            // Reset processing info when edited
             status: 'pending',
             processedBy: null,
             processedDate: null,
@@ -441,18 +482,15 @@ export function AuthProvider({ children }) {
         : req
     ))
 
-    // Backend API call simulation
     apiCall(`/api/leave-requests/${requestId}`, {
       method: 'PUT',
       body: updatedData
     })
   }
 
-  // UPDATED: Require notes for rejections
   const processLeaveRequest = (requestId, status, notes = null) => {
     const request = leaveRequests.find(req => req.id === requestId)
     
-    // REQUIRE REJECTION REASON
     if (status === 'rejected' && !notes?.trim()) {
       throw new Error('Rejection reason is required')
     }
@@ -462,14 +500,13 @@ export function AuthProvider({ children }) {
         ? { 
             ...req, 
             status,
-            processedBy: user.id, // Use ID instead of email
+            processedBy: user.id,
             processedDate: new Date().toISOString(),
             processingNotes: (request?.type === 'Emergency' || request?.type === 'Sick' || status === 'rejected') ? notes : null
           }
         : req
     ))
 
-    // Backend API call simulation
     apiCall(`/api/leave-requests/${requestId}/process`, {
       method: 'POST',
       body: { status, processedBy: user.id, notes }
@@ -478,38 +515,38 @@ export function AuthProvider({ children }) {
 
   const registerStaff = (staffData) => {
     const email = staffData.email
-    const defaultPassword = 'temp123' // Temporary password for new users
+    const defaultPassword = 'temp123'
     
     const newUser = {
-      id: `usr_${Date.now()}`, // Generate new ID
+      id: `usr_${Date.now()}`,
       email: email,
       password: defaultPassword,
       firstName: staffData.firstName,
       lastName: staffData.lastName,
       role: staffData.role || 'staff',
+      subRole: staffData.subRole || '', // For CEO tracking
       department: staffData.department,
       phone: staffData.phone,
       jobTitle: staffData.jobTitle || '',
-      isManager: staffData.role === 'ceo' ? true : (staffData.isManager || false), // CEO is always manager
-      managerId: staffData.role === 'ceo' ? null : (staffData.managerId || null),
-      verified: false, // User needs to verify then reset password
+      isManager: staffData.subRole === 'ceo' ? true : (staffData.isManager || false),
+      managerId: staffData.subRole === 'ceo' ? null : (staffData.managerId || null),
+      verified: false,
       isActive: true,
       isClockedIn: false,
       assignedLocationId: staffData.assignedLocationId || 'loc_001',
+      currentLocationIds: [], // Multi-location support
+      accessLevel: staffData.subRole === 'ceo' ? 'ceo' : (staffData.accessLevel || 'staff'),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     }
     
-    // Add directly to allUsers (no longer using pendingUsers)
     setAllUsers(prev => ({
       ...prev,
       [email]: newUser
     }))
     
-    // Generate verification OTP
     const result = generateOTP(email, 'verification')
 
-    // Backend API call simulation
     apiCall('/api/admin/register-staff', {
       method: 'POST',
       body: newUser
@@ -518,7 +555,7 @@ export function AuthProvider({ children }) {
     console.log(`Staff registered: ${email}`)
     console.log(`Temporary password: ${defaultPassword}`)
     console.log(`User must verify account then set new password`)
-    return { ...result, defaultPassword } // In production, don't return sensitive data
+    return { ...result, defaultPassword }
   }
 
   const updateStaff = (email, updates) => {
@@ -531,7 +568,6 @@ export function AuthProvider({ children }) {
       }
     }))
 
-    // Backend API call simulation
     const userToUpdate = allUsers[email]
     if (userToUpdate) {
       apiCall(`/api/admin/staff/${userToUpdate.id}`, {
@@ -541,13 +577,11 @@ export function AuthProvider({ children }) {
     }
   }
 
-  // UPDATED: Allow CEO deactivation with replacement requirement
   const deactivateUser = async (email, reason = '', replacementCeoEmail = null) => {
     const userToDeactivate = allUsers[email]
     if (!userToDeactivate) throw new Error('User not found')
     
-    // If deactivating CEO, ensure replacement is provided
-    if (userToDeactivate.role === 'ceo') {
+    if (isCEO(userToDeactivate)) {
       if (!replacementCeoEmail) {
         throw new Error('Must appoint a replacement CEO before deactivating current CEO')
       }
@@ -561,14 +595,14 @@ export function AuthProvider({ children }) {
         throw new Error('Replacement CEO must be an active user')
       }
 
-      // Promote replacement to CEO
       setAllUsers(prev => ({
         ...prev,
         [replacementCeoEmail]: {
           ...prev[replacementCeoEmail],
-          role: 'ceo',
+          subRole: 'ceo',
           isManager: true,
           managerId: null,
+          accessLevel: 'ceo',
           updatedAt: new Date().toISOString()
         }
       }))
@@ -585,7 +619,6 @@ export function AuthProvider({ children }) {
       }
     }))
 
-    // Backend API call simulation
     await apiCall(`/api/admin/staff/${userToDeactivate.id}/deactivate`, {
       method: 'POST',
       body: { reason, replacementCeoEmail }
@@ -594,7 +627,6 @@ export function AuthProvider({ children }) {
     return { success: true }
   }
 
-  // NEW: Reactivate user
   const reactivateUser = async (email) => {
     const user = allUsers[email]
     if (!user) throw new Error('User not found')
@@ -609,7 +641,6 @@ export function AuthProvider({ children }) {
       }
     }))
 
-    // Backend API call simulation
     await apiCall(`/api/admin/staff/${user.id}/reactivate`, {
       method: 'POST'
     })
@@ -617,7 +648,6 @@ export function AuthProvider({ children }) {
     return { success: true }
   }
 
-  // NEW: Create department
   const createDepartment = async (departmentData) => {
     const newDept = {
       id: `dept_${Date.now()}`,
@@ -633,7 +663,6 @@ export function AuthProvider({ children }) {
       [newDept.id]: newDept
     }))
 
-    // Backend API call simulation
     await apiCall('/api/admin/departments', {
       method: 'POST',
       body: newDept
@@ -642,7 +671,6 @@ export function AuthProvider({ children }) {
     return newDept
   }
 
-  // NEW: Update department
   const updateDepartment = async (deptId, updates) => {
     setDepartments(prev => ({
       ...prev,
@@ -653,7 +681,6 @@ export function AuthProvider({ children }) {
       }
     }))
 
-    // Backend API call simulation
     await apiCall(`/api/admin/departments/${deptId}`, {
       method: 'PUT',
       body: updates
@@ -662,12 +689,10 @@ export function AuthProvider({ children }) {
     return { success: true }
   }
 
-  // NEW: Deactivate department
   const deactivateDepartment = async (deptId) => {
     const dept = departments[deptId]
     if (!dept) throw new Error('Department not found')
 
-    // Check if any active users are in this department
     const activeUsersInDept = Object.values(allUsers).filter(user => 
       user.department === dept.name && user.isActive
     )
@@ -686,7 +711,6 @@ export function AuthProvider({ children }) {
       }
     }))
 
-    // Backend API call simulation
     await apiCall(`/api/admin/departments/${deptId}/deactivate`, {
       method: 'POST'
     })
@@ -694,7 +718,6 @@ export function AuthProvider({ children }) {
     return { success: true }
   }
 
-  // NEW: Create location
   const createLocation = async (locationData) => {
     const newLocation = {
       id: `loc_${Date.now()}`,
@@ -711,7 +734,6 @@ export function AuthProvider({ children }) {
       [newLocation.id]: newLocation
     }))
 
-    // Backend API call simulation
     await apiCall('/api/admin/locations', {
       method: 'POST',
       body: newLocation
@@ -720,7 +742,6 @@ export function AuthProvider({ children }) {
     return newLocation
   }
 
-  // NEW: Update location
   const updateLocation = async (locationId, updates) => {
     setLocations(prev => ({
       ...prev,
@@ -731,7 +752,6 @@ export function AuthProvider({ children }) {
       }
     }))
 
-    // Backend API call simulation
     await apiCall(`/api/admin/locations/${locationId}`, {
       method: 'PUT',
       body: updates
@@ -740,12 +760,10 @@ export function AuthProvider({ children }) {
     return { success: true }
   }
 
-  // NEW: Deactivate location
   const deactivateLocation = async (locationId) => {
     const location = locations[locationId]
     if (!location) throw new Error('Location not found')
 
-    // Check if any active users are assigned to this location
     const activeUsersInLocation = Object.values(allUsers).filter(user => 
       user.assignedLocationId === locationId && user.isActive
     )
@@ -764,7 +782,6 @@ export function AuthProvider({ children }) {
       }
     }))
 
-    // Backend API call simulation
     await apiCall(`/api/admin/locations/${locationId}/deactivate`, {
       method: 'POST'
     })
@@ -805,22 +822,9 @@ export function AuthProvider({ children }) {
     })
   }
 
-  // Helper to determine approval hierarchy
-  const getApprovalHierarchy = (staffId) => {
-    const hierarchy = getManagerHierarchy(staffId)
-    return hierarchy.map(manager => ({
-      id: manager.id,
-      name: getFullName(manager),
-      email: manager.email,
-      jobTitle: manager.jobTitle || manager.role
-    }))
-  }
-
-  // UPDATED: Security-specific helpers - restrict to assigned location only
   const getStaffForSite = (locationId) => {
     if (user?.role !== 'security') return []
     
-    // Security can only see their assigned location
     if (user.assignedLocationId !== locationId) return []
     
     return Object.values(allUsers).filter(staff => 
@@ -843,7 +847,8 @@ export function AuthProvider({ children }) {
     verifyOTP,
     clockIn, 
     clockOut,
-    switchLocation, // NEW: Location switching
+    addLocation, // NEW: Add location function
+    removeLocation, // NEW: Remove location function
     isOnManager,
     leaveRequests: getEnrichedLeaveRequests(),
     clockActivities: getEnrichedClockActivities(),
@@ -851,9 +856,9 @@ export function AuthProvider({ children }) {
     locations,
     departments,
     activeOTPs,
-    filterStates, // NEW: Filter state persistence
-    saveFilterState, // NEW: Save filter state
-    getFilterState, // NEW: Get filter state
+    filterStates,
+    saveFilterState,
+    getFilterState,
     submitLeaveRequest,
     updateLeaveRequest,
     processLeaveRequest,
@@ -867,12 +872,9 @@ export function AuthProvider({ children }) {
     createLocation,
     updateLocation,
     deactivateLocation,
-    getApprovalHierarchy,
     getStaffForSite,
-    // Raw data for components that need it
     rawLeaveRequests: leaveRequests,
     rawClockActivities: clockActivities,
-    // Constants
     LEAVE_TYPES
   }),[user, isOnManager, leaveRequests, clockActivities, allUsers, locations, departments, activeOTPs, filterStates])
   

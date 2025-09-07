@@ -119,13 +119,13 @@ export const seedDepartments = {
 }
 
 export const seedUsers = {
-  // CEO - ENHANCED: Dual role as CEO & Staff Manager with team members
+  // UPDATED: CEO with dual role (Staff + CEO) for manager portal access
   "ceo@company.com": { 
     id: "usr_001",
     email: "ceo@company.com",
-    password: "password", // Will be hashed in backend
-    role: "staff", // CHANGED: CEO is now a staff member to access manager portal
-    subRole: "ceo", // NEW: Track CEO status separately
+    password: "password",
+    role: "staff", // CEO is a staff member to access staff/manager portals
+    subRole: "ceo", // Track CEO status separately
     firstName: "Sarah", 
     lastName: "Chen",
     department: "Executive", 
@@ -137,8 +137,8 @@ export const seedUsers = {
     isClockedIn: false,
     jobTitle: "Chief Executive Officer",
     assignedLocationId: "loc_001", // Main Office
-    currentLocationIds: [], // NEW: Multi-location support
-    accessLevel: "ceo", // NEW: Access level for permissions
+    currentLocationIds: [], // Multi-location support
+    accessLevel: "ceo",
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
   },
@@ -154,19 +154,19 @@ export const seedUsers = {
     department: "Administration", 
     phone: "+1-555-0100", 
     isManager: false,
-    managerId: null, // Admin doesn't report to anyone
+    managerId: null,
     verified: true, 
     isActive: true,
     isClockedIn: false,
     jobTitle: "System Administrator",
-    assignedLocationId: "loc_001", // Main Office
+    assignedLocationId: "loc_001",
     currentLocationIds: [],
     accessLevel: "admin",
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
   },
 
-  // Security Guard - Third party, reports to admin for system access
+  // Security Guard
   "security@company.com": { 
     id: "usr_003",
     email: "security@company.com",
@@ -177,19 +177,19 @@ export const seedUsers = {
     department: "Security", 
     phone: "+1-555-0102", 
     isManager: false,
-    managerId: "usr_002", // Reports to admin for system management
+    managerId: "usr_002",
     verified: true, 
     isActive: true,
     isClockedIn: true,
     jobTitle: "Security Officer",
-    assignedLocationId: "loc_001", // Main Office assignment
-    currentLocationIds: ["loc_001"], // Currently at main office
+    assignedLocationId: "loc_001",
+    currentLocationIds: ["loc_001"],
     accessLevel: "security",
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
   },
 
-  // C-Level Executives - Reports to CEO (who can manage them as a manager)
+  // C-Level Executives - Reports to CEO
   "cfo@company.com": {
     id: "usr_004",
     email: "cfo@company.com",
@@ -205,7 +205,7 @@ export const seedUsers = {
     isActive: true,
     isClockedIn: false,
     jobTitle: "Chief Financial Officer",
-    assignedLocationId: "loc_001", // Main Office
+    assignedLocationId: "loc_001",
     currentLocationIds: [],
     accessLevel: "executive",
     createdAt: "2024-01-15T09:00:00Z",
@@ -227,7 +227,7 @@ export const seedUsers = {
     isActive: true,
     isClockedIn: false,
     jobTitle: "Chief Technology Officer",
-    assignedLocationId: "loc_001", // Main Office
+    assignedLocationId: "loc_001",
     currentLocationIds: [],
     accessLevel: "executive",
     createdAt: "2024-01-15T09:00:00Z",
@@ -249,7 +249,7 @@ export const seedUsers = {
     isActive: true,
     isClockedIn: false,
     jobTitle: "Chief Operating Officer",
-    assignedLocationId: "loc_001", // Main Office
+    assignedLocationId: "loc_001",
     currentLocationIds: [],
     accessLevel: "executive",
     createdAt: "2024-01-15T09:00:00Z",
@@ -272,7 +272,7 @@ export const seedUsers = {
     verified: true, 
     isActive: true,
     jobTitle: "IT Director",
-    assignedLocationId: "loc_001", // Main Office
+    assignedLocationId: "loc_001",
     currentLocationIds: [],
     accessLevel: "manager",
     createdAt: "2024-01-15T09:00:00Z",
@@ -294,7 +294,7 @@ export const seedUsers = {
     verified: true, 
     isActive: true,
     jobTitle: "HR Director",
-    assignedLocationId: "loc_001", // Main Office
+    assignedLocationId: "loc_001",
     currentLocationIds: [],
     accessLevel: "manager",
     createdAt: "2024-01-15T09:00:00Z",
@@ -316,7 +316,7 @@ export const seedUsers = {
     verified: true, 
     isActive: true,
     jobTitle: "Sales Director",
-    assignedLocationId: "loc_001", // Main Office
+    assignedLocationId: "loc_001",
     currentLocationIds: ["loc_001"],
     accessLevel: "manager",
     createdAt: "2024-01-15T09:00:00Z",
@@ -338,7 +338,7 @@ export const seedUsers = {
     verified: true, 
     isActive: true,
     jobTitle: "Operations Director",
-    assignedLocationId: "loc_002", // Warehouse
+    assignedLocationId: "loc_002",
     currentLocationIds: [],
     accessLevel: "manager",
     createdAt: "2024-01-15T09:00:00Z",
@@ -360,14 +360,14 @@ export const seedUsers = {
     verified: true,
     isActive: true,
     jobTitle: "Finance Director",
-    assignedLocationId: "loc_001", // Main Office
+    assignedLocationId: "loc_001",
     currentLocationIds: [],
     accessLevel: "manager",
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
   },
 
-  // Regular Staff - Multi-location capable
+  // UPDATED: Regular Staff with multi-location support
   "dev1@company.com": { 
     id: "usr_012",
     email: "dev1@company.com",
@@ -376,15 +376,15 @@ export const seedUsers = {
     firstName: "Alex", 
     lastName: "Rodriguez",
     department: "IT", 
-    managerId: "usr_007", // Reports to IT Director
+    managerId: "usr_007",
     phone: "+1-555-0202", 
     isClockedIn: true, 
     verified: true, 
     isActive: true,
     isManager: false,
     jobTitle: "Senior Developer",
-    assignedLocationId: "loc_001", // Main Office
-    currentLocationIds: ["loc_001", "loc_003"], // Working at office and remote
+    assignedLocationId: "loc_001",
+    currentLocationIds: ["loc_001", "loc_003"], // Working at multiple locations
     accessLevel: "staff",
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
@@ -398,14 +398,14 @@ export const seedUsers = {
     firstName: "Emma", 
     lastName: "Thompson",
     department: "IT", 
-    managerId: "usr_007", // Reports to IT Director
+    managerId: "usr_007",
     phone: "+1-555-0203", 
     isClockedIn: false, 
     verified: true, 
     isActive: true,
     isManager: false,
     jobTitle: "Frontend Developer",
-    assignedLocationId: "loc_003", // Remote
+    assignedLocationId: "loc_003",
     currentLocationIds: [],
     accessLevel: "staff",
     createdAt: "2024-01-15T09:00:00Z",
@@ -420,14 +420,14 @@ export const seedUsers = {
     firstName: "Carlos", 
     lastName: "Martinez",
     department: "IT", 
-    managerId: "usr_007", // Reports to IT Director
+    managerId: "usr_007",
     phone: "+1-555-0204", 
     isClockedIn: true, 
     verified: true, 
     isActive: true,
     isManager: false,
     jobTitle: "System Administrator",
-    assignedLocationId: "loc_001", // Main Office
+    assignedLocationId: "loc_001",
     currentLocationIds: ["loc_001", "loc_002"], // Working at office and warehouse
     accessLevel: "staff",
     createdAt: "2024-01-15T09:00:00Z",
@@ -442,14 +442,14 @@ export const seedUsers = {
     firstName: "James", 
     lastName: "Wilson",
     department: "HR", 
-    managerId: "usr_008", // Reports to HR Director
+    managerId: "usr_008",
     phone: "+1-555-0302", 
     isClockedIn: false, 
     verified: true, 
     isActive: true,
     isManager: false,
     jobTitle: "HR Specialist",
-    assignedLocationId: "loc_001", // Main Office
+    assignedLocationId: "loc_001",
     currentLocationIds: [],
     accessLevel: "staff",
     createdAt: "2024-01-15T09:00:00Z",
@@ -464,14 +464,14 @@ export const seedUsers = {
     firstName: "Jennifer", 
     lastName: "Martinez",
     department: "Sales", 
-    managerId: "usr_009", // Reports to Sales Director
+    managerId: "usr_009",
     phone: "+1-555-0402", 
     isClockedIn: true, 
     verified: true, 
     isActive: true,
     isManager: false,
     jobTitle: "Sales Representative",
-    assignedLocationId: "loc_001", // Main Office
+    assignedLocationId: "loc_001",
     currentLocationIds: ["loc_001"],
     accessLevel: "staff",
     createdAt: "2024-01-15T09:00:00Z",
@@ -486,14 +486,14 @@ export const seedUsers = {
     firstName: "Christopher", 
     lastName: "Lee",
     department: "Sales", 
-    managerId: "usr_009", // Reports to Sales Director
+    managerId: "usr_009",
     phone: "+1-555-0403", 
     isClockedIn: false, 
     verified: true, 
     isActive: true,
     isManager: false,
     jobTitle: "Account Executive",
-    assignedLocationId: "loc_003", // Remote
+    assignedLocationId: "loc_003",
     currentLocationIds: [],
     accessLevel: "staff",
     createdAt: "2024-01-15T09:00:00Z",
@@ -508,14 +508,14 @@ export const seedUsers = {
     firstName: "Thomas", 
     lastName: "Anderson",
     department: "Operations", 
-    managerId: "usr_010", // Reports to Operations Director
+    managerId: "usr_010",
     phone: "+1-555-0502", 
     isClockedIn: true, 
     verified: true, 
     isActive: true,
     isManager: false,
     jobTitle: "Operations Coordinator",
-    assignedLocationId: "loc_002", // Warehouse
+    assignedLocationId: "loc_002",
     currentLocationIds: ["loc_002", "loc_005"], // Working at warehouse and field
     accessLevel: "staff",
     createdAt: "2024-01-15T09:00:00Z",
@@ -530,14 +530,14 @@ export const seedUsers = {
     firstName: "Sophie",
     lastName: "Brown",
     department: "Finance",
-    managerId: "usr_011", // Reports to Finance Director
+    managerId: "usr_011",
     phone: "+1-555-0602",
     isClockedIn: false,
     verified: true,
     isActive: true,
     isManager: false,
     jobTitle: "Financial Analyst",
-    assignedLocationId: "loc_001", // Main Office
+    assignedLocationId: "loc_001",
     currentLocationIds: [],
     accessLevel: "staff",
     createdAt: "2024-01-15T09:00:00Z",
@@ -557,17 +557,17 @@ export const seedUsers = {
     phone: "+1-555-0999", 
     isClockedIn: false, 
     verified: true, 
-    isActive: false, // Inactive user
+    isActive: false,
     isManager: false,
     jobTitle: "Former Developer",
-    assignedLocationId: "loc_001", // Main Office
+    assignedLocationId: "loc_001",
     currentLocationIds: [],
     accessLevel: "staff",
     createdAt: "2024-01-15T09:00:00Z",
     updatedAt: "2024-01-15T09:00:00Z"
   },
 
-  // Unverified new user - needs verification then password reset
+  // Unverified new user
   "new.user@company.com": { 
     id: "usr_021",
     email: "new.user@company.com",
@@ -583,7 +583,7 @@ export const seedUsers = {
     isActive: true,
     isManager: false,
     jobTitle: "HR Assistant",
-    assignedLocationId: "loc_001", // Main Office
+    assignedLocationId: "loc_001",
     currentLocationIds: [],
     accessLevel: "staff",
     createdAt: "2024-09-01T09:00:00Z",
@@ -591,7 +591,7 @@ export const seedUsers = {
   }
 }
 
-// Enhanced leave requests with CEO team requests
+// UPDATED: Enhanced leave requests with CEO team requests  
 export const seedLeaveRequests = [
   // CEO team requests - CEO can approve these as a manager
   {
@@ -622,7 +622,6 @@ export const seedLeaveRequests = [
     processingNotes: null
   },
 
-  // Regular staff requesting annual leave
   {
     id: "lr_003",
     staffId: "usr_012", // Alex Rodriguez (dev1)
@@ -637,7 +636,6 @@ export const seedLeaveRequests = [
     processingNotes: null
   },
 
-  // More requests...
   {
     id: "lr_004",
     staffId: "usr_007", // IT Director requesting leave
@@ -653,7 +651,7 @@ export const seedLeaveRequests = [
   }
 ]
 
-// Enhanced clock activities with multi-location support
+// UPDATED: Enhanced clock activities with multi-location support
 export const seedClockActivities = [
   {
     id: "ca_001",
@@ -665,7 +663,7 @@ export const seedClockActivities = [
   },
   {
     id: "ca_002",
-    staffId: "usr_012", // Alex Rodriguez - switching to remote
+    staffId: "usr_012", // Alex Rodriguez - adding remote location
     action: "location_add",
     timestamp: "2025-09-06T11:30:00Z",
     locationId: "loc_003",
@@ -705,7 +703,7 @@ export const seedClockActivities = [
   }
 ]
 
-// Helper functions remain the same but work with new structure
+// Helper functions with CEO support
 export const getFullName = (user) => {
   if (!user) return 'Unknown User'
   if (user.name) return user.name // Legacy support
@@ -715,14 +713,12 @@ export const getFullName = (user) => {
 export const getUserInitials = (user) => {
   if (!user) return 'U'
   
-  // Legacy support
   if (user.name && !user.firstName && !user.lastName) {
     const words = user.name.split(' ')
     if (words.length === 1) return words[0].charAt(0).toUpperCase()
     return (words[0].charAt(0) + words[words.length - 1].charAt(0)).toUpperCase()
   }
   
-  // New structure
   const firstName = user.firstName || ''
   const lastName = user.lastName || ''
   
@@ -732,22 +728,22 @@ export const getUserInitials = (user) => {
   return (firstName.charAt(0) + lastName.charAt(0)).toUpperCase()
 }
 
-// Helper function to check if user is CEO
+// UPDATED: Helper function to check if user is CEO
 export const isCEO = (user) => {
   return user?.subRole === 'ceo' || user?.accessLevel === 'ceo'
 }
 
-// Helper function to check if user can access manager portal
+// UPDATED: Helper function to check if user can access manager portal
 export const canAccessManagerPortal = (user) => {
-  return user?.isManager && (user?.role === 'staff' || isCEO(user))
+  return user?.isManager && user?.role === 'staff'
 }
 
-// Helper function to get user by ID (for backend compatibility)
+// Helper function to get user by ID
 export const getUserById = (userId) => {
   return Object.values(seedUsers).find(user => user.id === userId)
 }
 
-// Helper function to get user by email (current key structure)
+// Helper function to get user by email
 export const getUserByEmail = (email) => {
   return seedUsers[email]
 }
@@ -762,9 +758,26 @@ export const getDepartmentById = (departmentId) => {
   return seedDepartments[departmentId]
 }
 
+// NEW: Helper function to get manager hierarchy
+export const getManagerHierarchy = (staffId) => {
+  const hierarchy = []
+  let currentUser = getUserById(staffId)
+  
+  while (currentUser && currentUser.managerId) {
+    const manager = getUserById(currentUser.managerId)
+    if (manager) {
+      hierarchy.push(manager)
+      currentUser = manager
+    } else {
+      break
+    }
+  }
+  
+  return hierarchy
+}
+
 // Available leave types
 export const LEAVE_TYPES = ['Annual', 'Sick', 'Emergency']
-
 // Sequelize Model Definitions for Backend Reference
 /*
 const User = sequelize.define('User', {

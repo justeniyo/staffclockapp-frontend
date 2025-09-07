@@ -42,7 +42,7 @@ export default function AppRouter() {
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/verify-account" element={<VerifyAccount />} />
 
-      {/* Staff (includes managers) */}
+      {/* UPDATED: Staff routes (includes managers and CEO dual role) */}
       <Route element={<RequireAuth roles={['staff']} />}>
         <Route path="/clock" element={<Layout><Clock /></Layout>} />
         <Route path="/staff-dashboard" element={<Layout><StaffDashboard /></Layout>} />
@@ -64,8 +64,8 @@ export default function AppRouter() {
         <Route path="/security-dashboard" element={<Layout><SecurityDashboard /></Layout>} />
       </Route>
 
-      {/* CEO */}
-      <Route element={<RequireAuth roles={['ceo']} />}>
+      {/* UPDATED: CEO routes (CEO can access via staff role with subRole='ceo') */}
+      <Route element={<RequireAuth roles={['staff']} requireCEO={true} />}>
         <Route path="/ceo-dashboard" element={<Layout><CEODashboard /></Layout>} />
       </Route>
 

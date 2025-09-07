@@ -82,6 +82,10 @@ body { margin: 0; background: $body-bg; }
   margin-bottom: .75rem;
   text-transform: uppercase;
   letter-spacing: .05em;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .5rem;
 }
 
 /* Mobile role header - matches desktop styling exactly */
@@ -104,7 +108,8 @@ body { margin: 0; background: $body-bg; }
 }
 
 .sidebar-link {
-  display: block;
+  display: flex;
+  align-items: center;
   color: #d1d5db;
   padding: .6rem .8rem;
   border-radius: .75rem;
@@ -121,6 +126,11 @@ body { margin: 0; background: $body-bg; }
   color: #111; 
   background: #ffde73; 
   font-weight: 700; 
+}
+
+.sidebar-link i {
+  width: 1.2rem;
+  flex-shrink: 0;
 }
 
 .sidebar-logout {
@@ -164,6 +174,7 @@ body { margin: 0; background: $body-bg; }
   font-style: italic;
 }
 
+/* UPDATED: Enhanced Portal Button Styling */
 .portal-btn {
   background: linear-gradient(135deg, #1f2937, #374151);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -174,6 +185,8 @@ body { margin: 0; background: $body-bg; }
   box-shadow: 0 2px 8px rgba(0,0,0,.15);
   transition: all .2s ease;
   text-decoration: none;
+  position: relative;
+  overflow: hidden;
 }
 
 .portal-btn:hover {
@@ -191,7 +204,30 @@ body { margin: 0; background: $body-bg; }
   box-shadow: 0 0 0 .2rem rgba(255, 213, 77, .25);
 }
 
-/* Navbar User Tag with Dropdown */
+/* CEO Portal Specific Styling */
+.portal-btn:has(.fa-crown) {
+  background: linear-gradient(135deg, #d97706, #f59e0b);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.portal-btn:has(.fa-crown):hover {
+  background: linear-gradient(135deg, #f59e0b, #fbbf24);
+}
+
+/* Active Portal Button */
+.portal-btn.active {
+  background: linear-gradient(135deg, #ffd54d, #ffde73);
+  color: #111;
+  border-color: #ffd54d;
+  box-shadow: 0 0 0 .2rem rgba(255, 213, 77, .25);
+}
+
+.portal-btn.active:hover {
+  background: linear-gradient(135deg, #ffde73, #ffe99d);
+  color: #111;
+}
+
+/* UPDATED: Navbar User Tag with Role Display */
 .navbar-user-tag {
   display: flex;
   align-items: center;
@@ -231,6 +267,11 @@ body { margin: 0; background: $body-bg; }
   letter-spacing: .5px;
 }
 
+.navbar-user-tag .user-role {
+  font-size: .7rem;
+  padding: .2rem .4rem;
+}
+
 /* User Dropdown */
 .user-dropdown {
   position: absolute;
@@ -242,12 +283,13 @@ body { margin: 0; background: $body-bg; }
   border-radius: .75rem;
   box-shadow: 0 4px 20px rgba(0,0,0,.15);
   z-index: 1000;
-  min-width: 160px;
+  min-width: 180px;
   overflow: hidden;
 }
 
 .user-dropdown-item {
-  display: block;
+  display: flex;
+  align-items: center;
   width: 100%;
   padding: .75rem 1rem;
   background: transparent;
@@ -257,6 +299,7 @@ body { margin: 0; background: $body-bg; }
   font-weight: 600;
   transition: background .2s ease;
   text-decoration: none;
+  gap: .5rem;
 }
 
 .user-dropdown-item:hover {
@@ -265,8 +308,15 @@ body { margin: 0; background: $body-bg; }
 }
 
 .user-dropdown-item i {
-  margin-right: .5rem;
   width: 1rem;
+  flex-shrink: 0;
+}
+
+/* Dropdown Divider */
+.dropdown-divider {
+  height: 1px;
+  background: #e5e7eb;
+  margin: 0;
 }
 
 /* Content */
@@ -313,7 +363,7 @@ body { margin: 0; background: $body-bg; }
   margin-right: 16px;
 }
 
-/* Login */
+/* UPDATED: CEO Login Styling */
 .login-page {
   min-height: 100vh;
   display: grid;
@@ -324,7 +374,9 @@ body { margin: 0; background: $body-bg; }
 .login-staff { background: #121826; }
 .login-admin { background: #fff9e6; }
 .login-security { background: #ffe35a; }
-.login-ceo { background: #fffdf6; }
+.login-ceo { 
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+}
 
 .card.login-card {
   border: none;
@@ -356,7 +408,43 @@ body { margin: 0; background: $body-bg; }
   font-weight: 800;
   font-size: 1.25rem;
   margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
 }
+
+/* UPDATED: Multi-Location Clock Styling */
+.location-card {
+  transition: all .2s ease;
+  border: 2px solid transparent;
+}
+
+.location-card:hover {
+  border-color: rgba(255, 213, 77, .5);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0,0,0,.1);
+}
+
+.location-card.active {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, .05);
+}
+
+.location-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+  padding: .25rem .5rem;
+  border-radius: .375rem;
+  font-size: .75rem;
+  font-weight: 600;
+}
+
+.location-type-office { color: #3b82f6; }
+.location-type-warehouse { color: #f59e0b; }
+.location-type-remote { color: #06b6d4; }
+.location-type-field { color: #10b981; }
 
 /* Enhanced card styling with header contrast */
 .card {
@@ -680,6 +768,11 @@ body { margin: 0; background: $body-bg; }
   .navbar-user-tag {
     padding: .35rem .5rem;
     margin-left: .25rem;
+  }
+  
+  .portal-btn {
+    padding: .4rem .6rem;
+    font-size: .85rem;
   }
 }
 
