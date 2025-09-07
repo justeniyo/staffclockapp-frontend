@@ -243,37 +243,6 @@ export default function ManageStaff(){
     return sorted
   }, [usersArray, filters, sortConfig, locations])
 
-  // Get filter-aware options for dependent dropdowns
-  const getFilteredDepartments = () => {
-    const visibleUsers = usersArray.filter(user => {
-      // Apply all filters except department
-      const tempFilters = { ...filters, department: '' }
-      return applyNonDepartmentFilters(user, tempFilters)
-    })
-    
-    const availableDepartments = [...new Set(visibleUsers.map(user => user.departmentName))]
-    return departmentsList.filter(dept => availableDepartments.includes(dept.name))
-  }
-
-  const getFilteredManagers = () => {
-    const visibleUsers = usersArray.filter(user => {
-      const tempFilters = { ...filters, manager: '' }
-      return applyNonManagerFilters(user, tempFilters) && user.isManager
-    })
-    
-    return visibleUsers
-  }
-
-  const applyNonDepartmentFilters = (user, tempFilters) => {
-    // Apply all filters except department
-    return true // Simplified for brevity
-  }
-
-  const applyNonManagerFilters = (user, tempFilters) => {
-    // Apply all filters except manager
-    return true // Simplified for brevity
-  }
-
   // Pagination
   const totalPages = Math.ceil(filteredAndSortedStaff.length / itemsPerPage)
   const paginatedStaff = useMemo(() => {
@@ -306,8 +275,6 @@ export default function ManageStaff(){
       exportToCSV(dataToExport)
     } else if (exportConfig.format === 'json') {
       exportToJSON(dataToExport)
-    } else if (exportConfig.format === 'excel') {
-      exportToExcel(dataToExport)
     }
     
     setShowExportModal(false)
@@ -322,7 +289,7 @@ export default function ManageStaff(){
       headers.push('ID', 'First Name', 'Last Name', 'Email', 'Phone', 'Job Title')
     }
     
-    headers.push('Role', 'Department', 'Is Manager', 'Status', 'Verified')
+    headers.push('Role', 'Sub Role', 'Department', 'Is Manager', 'Status', 'Verified')
 
     if (exportConfig.includeLocationAccess) {
       headers.push('Primary Location', 'Additional Locations Count', 'Location Access List')
@@ -359,6 +326,7 @@ export default function ManageStaff(){
 
       row.push(
         user.displayRole,
+        user.subRole || '',
         user.departmentName,
         user.isManager ? 'Yes' : 'No',
         user.isActive ? 'Active' : 'Inactive',
@@ -377,10 +345,11 @@ export default function ManageStaff(){
       }
 
       if (exportConfig.includeManagerHierarchy) {
+        const manager = user.managerId ? getUserById(user.managerId) : null
         row.push(
           user.managerName,
           user.managerEmail || '',
-          user.managerEmail ? getUserById(user.managerId)?.department || '' : ''
+          manager?.department || manager?.departmentId && departments[manager.departmentId]?.name || ''
         )
       }
 
@@ -446,7 +415,9 @@ export default function ManageStaff(){
 
       exportUser.organizational = {
         role: user.displayRole,
+        subRole: user.subRole,
         department: user.departmentName,
+        departmentId: user.departmentId,
         isManager: user.isManager,
         status: user.isActive ? 'active' : 'inactive',
         verified: user.verified
@@ -455,17 +426,20 @@ export default function ManageStaff(){
       if (exportConfig.includeLocationAccess) {
         exportUser.locations = {
           primary: user.locationName,
+          primaryId: user.assignedLocationId,
           additional: user.allowedLocationIds?.filter(id => id !== user.assignedLocationId)
-            .map(id => locations[id]?.name).filter(Boolean) || [],
+            .map(id => ({ id, name: locations[id]?.name })).filter(l => l.name) || [],
           totalAccess: user.locationCount
         }
       }
 
       if (exportConfig.includeManagerHierarchy) {
+        const manager = user.managerId ? getUserById(user.managerId) : null
         exportUser.hierarchy = {
           manager: user.managerName,
           managerEmail: user.managerEmail,
-          managerDepartment: user.managerEmail ? getUserById(user.managerId)?.department : null
+          managerId: user.managerId,
+          managerDepartment: manager?.department || (manager?.departmentId && departments[manager.departmentId]?.name)
         }
       }
 
@@ -508,15 +482,17 @@ export default function ManageStaff(){
     document.body.removeChild(link)
   }
 
-  // Edit handlers (simplified for brevity)
+  // Edit handlers
   const startEdit = (user) => {
     setEditingUser(user.email)
     setEditForm({
       firstName: user.firstName,
       lastName: user.lastName,
-      department: user.departmentName,
+      departmentId: user.departmentId || '',
+      department: user.departmentName, // Keep for backward compatibility
       jobTitle: user.jobTitle || '',
       role: user.role,
+      subRole: user.subRole || '',
       isManager: user.isManager,
       managerId: user.managerId || '',
       isActive: user.isActive,
@@ -529,13 +505,20 @@ export default function ManageStaff(){
   const saveEdit = () => {
     const userToUpdate = allUsers[editingUser]
     
-    // Validation (simplified)
+    // Validation
     if (editForm.role === 'ceo' && editForm.managerId) {
       setEditForm(prev => ({ ...prev, managerId: '' }))
       return
     }
     
-    updateStaff(editingUser, editForm)
+    // Update department name for backward compatibility
+    const dept = departments[editForm.departmentId]
+    const updateData = {
+      ...editForm,
+      department: dept?.name || editForm.department
+    }
+    
+    updateStaff(editingUser, updateData)
     setEditingUser(null)
     setEditForm({})
   }
@@ -545,9 +528,32 @@ export default function ManageStaff(){
     setEditForm({})
   }
 
-  // Deactivation handlers (simplified)
+  // Deactivation handlers
   const handleDeactivateUser = async () => {
-    // Implementation from previous version
+    if (!showDeactivateModal) return
+    
+    try {
+      if (isCEO(showDeactivateModal) && !replacementCeoEmail) {
+        setShowCeoReplacementModal(showDeactivateModal)
+        setShowDeactivateModal(null)
+        return
+      }
+      
+      await deactivateUser(showDeactivateModal.email, deactivateReason, replacementCeoEmail)
+      setShowDeactivateModal(null)
+      setDeactivateReason('')
+      setReplacementCeoEmail('')
+    } catch (error) {
+      alert(error.message)
+    }
+  }
+
+  const handleReactivateUser = async (email) => {
+    try {
+      await reactivateUser(email)
+    } catch (error) {
+      alert(error.message)
+    }
   }
 
   const clearFilters = () => {
@@ -713,7 +719,7 @@ export default function ManageStaff(){
                   onChange={(e) => handleFilterChange({...filters, department: e.target.value})}
                 >
                   <option value="">All Departments</option>
-                  {getFilteredDepartments().map(dept => (
+                  {departmentsList.map(dept => (
                     <option key={dept.id} value={dept.name}>{dept.name}</option>
                   ))}
                 </select>
@@ -757,9 +763,9 @@ export default function ManageStaff(){
                   onChange={(e) => handleFilterChange({...filters, manager: e.target.value})}
                 >
                   <option value="">All Managers</option>
-                  {getFilteredManagers().map(manager => (
+                  {managers.map(([email, manager]) => (
                     <option key={manager.id} value={manager.id}>
-                      {manager.staffName} ({manager.departmentName})
+                      {getFullName(manager)} ({manager.departmentName || manager.department})
                     </option>
                   ))}
                 </select>

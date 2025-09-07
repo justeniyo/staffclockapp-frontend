@@ -6,10 +6,15 @@ import { getFullName, getUserById } from '../../config/seedUsers'
 export default function ManagerDashboard(){
   const { rawLeaveRequests, allUsers, user, clockActivities } = useAuth()
   
-  // Get team statistics
+  // Get team statistics using ID-based relationships
   const teamData = useMemo(() => {
+    // Find team members who report to this manager (using user ID)
     const teamMembers = Object.values(allUsers).filter(staff => staff.managerId === user.id)
-    const teamRequests = rawLeaveRequests.filter(req => teamMembers.some(member => member.id === req.staffId))
+    
+    // Get leave requests from team members
+    const teamRequests = rawLeaveRequests.filter(req => 
+      teamMembers.some(member => member.id === req.staffId)
+    )
     const pendingRequests = teamRequests.filter(req => req.status === 'pending')
     
     // Get recent team activities
@@ -38,7 +43,7 @@ export default function ManagerDashboard(){
     }
   }, [allUsers, rawLeaveRequests, user.id, clockActivities])
 
-  // Get my own leave requests as a manager
+  // Get my own leave requests as a manager (using user ID)
   const myLeaveData = useMemo(() => {
     const myRequests = rawLeaveRequests.filter(req => req.staffId === user.id)
     const pending = myRequests.filter(req => req.status === 'pending').length
@@ -49,7 +54,7 @@ export default function ManagerDashboard(){
     }
   }, [rawLeaveRequests, user.id])
 
-  // Get my manager for escalation
+  // Get my manager for escalation (using managerId)
   const myManager = user.managerId ? getUserById(user.managerId) : null
 
   const getStatusBadge = (status) => {
@@ -77,6 +82,16 @@ export default function ManagerDashboard(){
 
   const getActivityColor = (action) => {
     return action === 'clock_in' ? 'text-success' : 'text-danger'
+  }
+
+  // Helper to get staff member from activity using staffId
+  const getStaffFromActivity = (activity) => {
+    return teamData.members.find(m => m.id === activity.staffId)
+  }
+
+  // Helper to get staff member from request using staffId
+  const getStaffFromRequest = (request) => {
+    return teamData.members.find(m => m.id === request.staffId)
   }
 
   return (
@@ -265,7 +280,7 @@ export default function ManagerDashboard(){
                 ) : (
                   <div>
                     {teamData.pendingRequests.slice(0, 4).map(req => {
-                      const staff = teamData.members.find(m => m.id === req.staffId)
+                      const staff = getStaffFromRequest(req)
                       return (
                         <div key={req.id} className="d-flex justify-content-between align-items-center py-2 border-bottom">
                           <div className="d-flex align-items-center">
@@ -321,7 +336,7 @@ export default function ManagerDashboard(){
                 ) : (
                   <div>
                     {teamData.activities.map(activity => {
-                      const staff = teamData.members.find(m => m.id === activity.staffId)
+                      const staff = getStaffFromActivity(activity)
                       return (
                         <div key={activity.id} className="d-flex align-items-center py-2 border-bottom">
                           <div className="me-3">
@@ -334,7 +349,7 @@ export default function ManagerDashboard(){
                                   {staff ? getFullName(staff) : 'Unknown Staff'}
                                 </div>
                                 <small className="text-muted">
-                                  {activity.action.replace('_', ' ').toUpperCase()} • {activity.location}
+                                  {activity.action.replace('_', ' ').toUpperCase()} • {activity.location || activity.locationName}
                                 </small>
                               </div>
                               <small className="text-muted">

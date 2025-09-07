@@ -18,12 +18,13 @@ export default function RegisterStaff() {
     email: '',
     phone: '',
     department: '',
+    departmentId: '', // NEW: Support ID-based departments
     jobTitle: '',
     role: 'staff',
     isManager: false,
     managerId: '',
     assignedLocationId: '',
-    allowedLocationIds: [] // Multi-location support
+    allowedLocationIds: [] // NEW: Multi-location support
   })
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -40,6 +41,7 @@ export default function RegisterStaff() {
   const [newDepartment, setNewDepartment] = useState({ name: '', description: '' })
   const [newLocation, setNewLocation] = useState({ name: '', address: '', type: 'office' })
 
+  // Convert departments and locations objects to arrays for easier iteration
   const departmentsList = Object.values(departments).filter(dept => dept.isActive)
   const locationsList = Object.values(locations).filter(loc => loc.isActive)
   
@@ -60,24 +62,28 @@ export default function RegisterStaff() {
     }
     
     // For staff members
-    if (formData.department) {
-      // First try to find managers in the same department
-      const departmentManagers = usersList.filter(user => 
-        user.department === formData.department &&
-        user.isManager && 
-        user.role === 'staff' &&
-        user.isActive
-      )
-      
-      if (departmentManagers.length > 0) {
-        return departmentManagers
+    if (formData.departmentId) {
+      // Find the selected department
+      const selectedDept = departments[formData.departmentId]
+      if (selectedDept) {
+        // First try to find managers in the same department
+        const departmentManagers = usersList.filter(user => 
+          (user.departmentId === formData.departmentId || user.department === selectedDept.name) &&
+          user.isManager && 
+          user.role === 'staff' &&
+          user.isActive
+        )
+        
+        if (departmentManagers.length > 0) {
+          return departmentManagers
+        }
       }
       
       // If no department managers, show executives and CEO
       return usersList.filter(user => 
         (user.subRole === 'ceo' || user.subRole === 'executive' ||
          (user.role === 'staff' && user.isManager && 
-          ['Executive', 'Administration'].includes(user.department))) &&
+          (user.department === 'Executive' || user.department === 'Administration'))) &&
         user.isActive
       )
     }
@@ -100,7 +106,7 @@ export default function RegisterStaff() {
     if (!formData.lastName.trim()) errors.push('Last name is required')
     if (!formData.email.trim()) errors.push('Email is required')
     if (!formData.phone.trim()) errors.push('Phone number is required')
-    if (!formData.department) errors.push('Department is required')
+    if (!formData.departmentId) errors.push('Department is required')
     if (!formData.assignedLocationId) errors.push('Primary location assignment is required')
     
     // Email validation
@@ -143,8 +149,9 @@ export default function RegisterStaff() {
     
     // Department hierarchy warnings
     const manager = formData.managerId ? getUserById(formData.managerId) : null
-    if (manager && manager.department !== formData.department) {
-      warnings.push(`Manager is from ${manager.department} department, but user is assigned to ${formData.department}`)
+    const selectedDept = departments[formData.departmentId]
+    if (manager && selectedDept && manager.departmentId !== formData.departmentId && manager.department !== selectedDept.name) {
+      warnings.push(`Manager is from ${manager.department || 'unknown'} department, but user is assigned to ${selectedDept.name}`)
     }
     
     // Job title recommendations
@@ -172,11 +179,13 @@ export default function RegisterStaff() {
       // Prepare enhanced confirmation data
       const manager = formData.managerId ? getUserById(formData.managerId) : null
       const primaryLocation = locations[formData.assignedLocationId]
-      const department = departmentsList.find(d => d.name === formData.department)
+      const department = departments[formData.departmentId]
       const allowedLocations = formData.allowedLocationIds.map(id => locations[id]).filter(Boolean)
       
       // Calculate organizational impact
-      const departmentCount = Object.values(allUsers).filter(u => u.department === formData.department && u.isActive).length
+      const departmentCount = Object.values(allUsers).filter(u => 
+        (u.departmentId === formData.departmentId || u.department === department?.name) && u.isActive
+      ).length
       const managerReports = manager ? Object.values(allUsers).filter(u => u.managerId === manager.id && u.isActive).length : 0
       
       setConfirmationData({
@@ -210,9 +219,14 @@ export default function RegisterStaff() {
   // ACTUAL REGISTRATION AFTER DETAILED CONFIRMATION
   const confirmRegistration = async () => {
     try {
+      // Get department name for backward compatibility
+      const selectedDept = departments[formData.departmentId]
+      
       // Include multi-location data in registration
       const registrationData = {
         ...formData,
+        department: selectedDept?.name || '', // Backward compatibility
+        departmentId: formData.departmentId,
         allowedLocationIds: [
           formData.assignedLocationId, // Always include primary location
           ...formData.allowedLocationIds.filter(id => id !== formData.assignedLocationId)
@@ -244,6 +258,7 @@ export default function RegisterStaff() {
         email: '',
         phone: '',
         department: '',
+        departmentId: '',
         jobTitle: '',
         role: 'staff',
         isManager: false,
@@ -274,17 +289,14 @@ export default function RegisterStaff() {
       if (name === 'role') {
         newData.managerId = ''
         newData.isManager = value === 'ceo' ? true : false // CEO is always a manager
-        
-        // CEO gets subRole
-        if (value === 'ceo') {
-          newData.subRole = 'ceo'
-          newData.role = 'staff' // CEO is staff with special privileges
-        }
       }
       
       // Reset manager when department changes
-      if (name === 'department') {
+      if (name === 'departmentId') {
         newData.managerId = ''
+        // Update department name for backward compatibility
+        const dept = departments[value]
+        newData.department = dept?.name || ''
       }
       
       // CEO cannot have isManager false
@@ -310,7 +322,7 @@ export default function RegisterStaff() {
     }))
   }
 
-  // Department and location creation handlers (unchanged)
+  // Department and location creation handlers
   const handleCreateDepartment = async (e) => {
     e.preventDefault()
     setError('')
@@ -328,7 +340,11 @@ export default function RegisterStaff() {
       }
 
       const dept = await createDepartment(newDepartment)
-      setFormData(prev => ({ ...prev, department: dept.name }))
+      setFormData(prev => ({ 
+        ...prev, 
+        departmentId: dept.id,
+        department: dept.name 
+      }))
       setNewDepartment({ name: '', description: '' })
       setShowCreateDepartment(false)
       setSuccess('Department created successfully!')
@@ -365,7 +381,8 @@ export default function RegisterStaff() {
 
   const getManagerDisplayName = (manager) => {
     const title = manager.jobTitle || manager.role.charAt(0).toUpperCase() + manager.role.slice(1)
-    return `${getFullName(manager)} - ${title} (${manager.department})`
+    const dept = manager.department || (manager.departmentId ? departments[manager.departmentId]?.name : 'Unknown')
+    return `${getFullName(manager)} - ${title} (${dept})`
   }
 
   const getRoleDescription = (role) => {
@@ -522,14 +539,14 @@ export default function RegisterStaff() {
                       </label>
                       <select 
                         className="form-select"
-                        name="department"
-                        value={formData.department}
+                        name="departmentId"
+                        value={formData.departmentId}
                         onChange={handleChange}
                         required
                       >
                         <option value="">Select Department</option>
                         {departmentsList.map(dept => (
-                          <option key={dept.id} value={dept.name}>{dept.name}</option>
+                          <option key={dept.id} value={dept.id}>{dept.name}</option>
                         ))}
                       </select>
                     </div>
@@ -649,7 +666,7 @@ export default function RegisterStaff() {
                         <label className="form-label">
                           Reports To *
                           <small className="text-muted ms-2">
-                            {formData.department && `(Showing managers for ${formData.department} department)`}
+                            {formData.departmentId && `(Showing managers for ${departments[formData.departmentId]?.name} department)`}
                           </small>
                         </label>
                         <select 
@@ -666,10 +683,10 @@ export default function RegisterStaff() {
                             </option>
                           ))}
                         </select>
-                        {potentialManagers.length === 0 && formData.department && (
+                        {potentialManagers.length === 0 && formData.departmentId && (
                           <small className="text-warning">
                             <i className="fas fa-exclamation-triangle me-1"></i>
-                            No managers found for {formData.department} department. Please select a different department or create a manager first.
+                            No managers found for {departments[formData.departmentId]?.name} department. Please select a different department or create a manager first.
                           </small>
                         )}
                       </div>
@@ -985,7 +1002,7 @@ export default function RegisterStaff() {
           </div>
         )}
 
-        {/* Create Department Modal (unchanged) */}
+        {/* Create Department Modal */}
         {showCreateDepartment && (
           <div className="modal show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
             <div className="modal-dialog">
@@ -1047,7 +1064,7 @@ export default function RegisterStaff() {
           </div>
         )}
 
-        {/* Create Location Modal (unchanged) */}
+        {/* Create Location Modal */}
         {showCreateLocation && (
           <div className="modal show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
             <div className="modal-dialog">
