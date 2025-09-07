@@ -27,6 +27,10 @@ export default function RegisterStaff() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   
+  // Confirmation modal state
+  const [showConfirmation, setShowConfirmation] = useState(false)
+  const [confirmationData, setConfirmationData] = useState(null)
+  
   // Department and location management
   const [showCreateDepartment, setShowCreateDepartment] = useState(false)
   const [showCreateLocation, setShowCreateLocation] = useState(false)
@@ -114,9 +118,36 @@ export default function RegisterStaff() {
         throw new Error('Location assignment is required')
       }
       
-      const result = registerStaff(formData)
-      setSuccess(`Staff registered successfully! Email: ${formData.email} | Temporary Password: ${result.defaultPassword} | Verification OTP: ${result.otp}`)
+      // Prepare confirmation data
+      const manager = formData.managerId ? getUserById(formData.managerId) : null
+      const location = locations[formData.assignedLocationId]
+      const department = departmentsList.find(d => d.name === formData.department)
       
+      setConfirmationData({
+        ...formData,
+        managerName: manager ? getFullName(manager) : 'None',
+        locationName: location?.name || 'Unknown',
+        departmentName: department?.name || formData.department
+      })
+      
+      setShowConfirmation(true)
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  // ACTUAL REGISTRATION AFTER CONFIRMATION
+  const confirmRegistration = async () => {
+    try {
+      const result = registerStaff(formData)
+      setSuccess(`Staff registered successfully! 
+        Email: ${formData.email} 
+        Temporary Password: ${result.defaultPassword} 
+        Verification OTP: ${result.otp}
+        
+        The user must verify their account and set a new password before they can login.`)
+      
+      // Reset form
       setFormData({
         firstName: '',
         lastName: '',
@@ -129,8 +160,12 @@ export default function RegisterStaff() {
         managerId: '',
         assignedLocationId: ''
       })
+      
+      setShowConfirmation(false)
+      setConfirmationData(null)
     } catch (err) {
       setError(err.message)
+      setShowConfirmation(false)
     }
   }
 
@@ -169,6 +204,8 @@ export default function RegisterStaff() {
 
   const handleCreateDepartment = async (e) => {
     e.preventDefault()
+    setError('')
+    
     try {
       if (!newDepartment.name.trim()) {
         throw new Error('Department name is required')
@@ -186,14 +223,16 @@ export default function RegisterStaff() {
       setFormData(prev => ({ ...prev, department: dept.name }))
       setNewDepartment({ name: '', description: '' })
       setShowCreateDepartment(false)
-      alert('Department created successfully!')
+      setSuccess('Department created successfully!')
     } catch (err) {
-      alert(err.message)
+      setError(err.message)
     }
   }
 
   const handleCreateLocation = async (e) => {
     e.preventDefault()
+    setError('')
+    
     try {
       if (!newLocation.name.trim()) {
         throw new Error('Location name is required')
@@ -211,9 +250,9 @@ export default function RegisterStaff() {
       setFormData(prev => ({ ...prev, assignedLocationId: location.id }))
       setNewLocation({ name: '', address: '', type: 'office' })
       setShowCreateLocation(false)
-      alert('Location created successfully!')
+      setSuccess('Location created successfully!')
     } catch (err) {
-      alert(err.message)
+      setError(err.message)
     }
   }
 
@@ -501,6 +540,110 @@ export default function RegisterStaff() {
             </div>
           </div>
         </div>
+
+        {/* CONFIRMATION MODAL - REPLACES BROWSER ALERTS */}
+        {showConfirmation && confirmationData && (
+          <div className="modal show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <div className="modal-dialog modal-lg">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">
+                    <i className="fas fa-user-plus me-2"></i>
+                    Confirm Staff Registration
+                  </h5>
+                  <button 
+                    type="button" 
+                    className="btn-close"
+                    onClick={() => setShowConfirmation(false)}
+                  ></button>
+                </div>
+                <div className="modal-body">
+                  <div className="alert alert-info">
+                    <i className="fas fa-info-circle me-2"></i>
+                    <strong>Please review the details below before confirming registration:</strong>
+                  </div>
+                  
+                  <div className="row g-3">
+                    <div className="col-md-6">
+                      <label className="form-label fw-bold">Full Name</label>
+                      <div className="p-2 bg-light rounded">
+                        {confirmationData.firstName} {confirmationData.lastName}
+                      </div>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label fw-bold">Email</label>
+                      <div className="p-2 bg-light rounded">{confirmationData.email}</div>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label fw-bold">Phone</label>
+                      <div className="p-2 bg-light rounded">{confirmationData.phone}</div>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label fw-bold">Role</label>
+                      <div className="p-2 bg-light rounded">
+                        <span className="badge bg-primary me-2">
+                          {confirmationData.role.toUpperCase()}
+                        </span>
+                        {confirmationData.isManager && (
+                          <span className="badge bg-info">Manager</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label fw-bold">Department</label>
+                      <div className="p-2 bg-light rounded">{confirmationData.departmentName}</div>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label fw-bold">Job Title</label>
+                      <div className="p-2 bg-light rounded">
+                        {confirmationData.jobTitle || 'Not specified'}
+                      </div>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label fw-bold">Reports To</label>
+                      <div className="p-2 bg-light rounded">{confirmationData.managerName}</div>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label fw-bold">Assigned Location</label>
+                      <div className="p-2 bg-light rounded">{confirmationData.locationName}</div>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-4 p-3 bg-warning bg-opacity-25 rounded">
+                    <h6 className="text-warning mb-2">
+                      <i className="fas fa-exclamation-triangle me-2"></i>
+                      After Registration:
+                    </h6>
+                    <ul className="mb-0 small">
+                      <li>User will receive a temporary password</li>
+                      <li>A verification OTP will be sent to their email</li>
+                      <li>User must verify their account and set a new password</li>
+                      <li>User cannot login until verification is complete</li>
+                    </ul>
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary"
+                    onClick={() => setShowConfirmation(false)}
+                  >
+                    <i className="fas fa-times me-1"></i>
+                    Cancel
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn-warning"
+                    onClick={confirmRegistration}
+                  >
+                    <i className="fas fa-check me-1"></i>
+                    Confirm Registration
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Create Department Modal */}
         {showCreateDepartment && (

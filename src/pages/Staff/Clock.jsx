@@ -2,12 +2,14 @@ import { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 
 export default function Clock() {
-  const { user, clockIn, clockOut, locations } = useAuth()
+  const { user, clockIn, clockOut, switchLocation, locations } = useAuth()
   const [selectedLocationId, setSelectedLocationId] = useState(user?.assignedLocationId || 'loc_001')
+  const [switching, setSwitching] = useState(false)
   
   // Get available active locations
   const availableLocations = Object.values(locations).filter(loc => loc.isActive)
   const selectedLocation = locations[selectedLocationId]
+  const currentLocation = user?.currentLocationId ? locations[user.currentLocationId] : null
   
   const handleClockIn = () => {
     clockIn(selectedLocationId)
@@ -15,6 +17,24 @@ export default function Clock() {
   
   const handleClockOut = () => {
     clockOut(selectedLocationId)
+  }
+
+  const handleSwitchLocation = async () => {
+    if (!user?.isClockedIn || selectedLocationId === (user.currentLocationId || user.assignedLocationId)) {
+      return
+    }
+
+    setSwitching(true)
+    try {
+      const result = switchLocation(selectedLocationId)
+      // You could show a toast notification here
+      console.log(`Switched to ${result.newLocation}`)
+    } catch (error) {
+      console.error('Location switch failed:', error.message)
+      alert(error.message)
+    } finally {
+      setSwitching(false)
+    }
   }
   
   const getCurrentStatus = () => {
@@ -44,6 +64,7 @@ export default function Clock() {
   }
   
   const currentStatus = getCurrentStatus()
+  const isLocationDifferent = user?.isClockedIn && selectedLocationId !== (user.currentLocationId || user.assignedLocationId)
   
   return (
     <div>
@@ -67,10 +88,11 @@ export default function Clock() {
                 <p className="text-muted mb-4">{currentStatus.message}</p>
                 
                 {/* Current location display if clocked in */}
-                {user?.isClockedIn && (
+                {user?.isClockedIn && currentLocation && (
                   <div className="alert alert-success">
                     <i className="fas fa-map-marker-alt me-2"></i>
-                    Currently at: <strong>{selectedLocation?.name || 'Unknown Location'}</strong>
+                    Currently at: <strong>{currentLocation.name}</strong>
+                    <div className="small text-muted mt-1">{currentLocation.address}</div>
                   </div>
                 )}
               </div>
@@ -81,12 +103,14 @@ export default function Clock() {
               <div className="card-header">
                 <h6 className="mb-0">
                   <i className="fas fa-map-marker-alt me-2"></i>
-                  Select Location
+                  {user?.isClockedIn ? 'Switch Location' : 'Select Location'}
                 </h6>
               </div>
               <div className="card-body">
                 <div className="mb-3">
-                  <label className="form-label">Work Location</label>
+                  <label className="form-label">
+                    {user?.isClockedIn ? 'New Work Location' : 'Work Location'}
+                  </label>
                   <select 
                     className="form-select" 
                     value={selectedLocationId}
@@ -105,6 +129,43 @@ export default function Clock() {
                     </small>
                   )}
                 </div>
+
+                {/* Location Switch Button for Clocked In Users */}
+                {user?.isClockedIn && isLocationDifferent && (
+                  <div className="alert alert-info">
+                    <div className="d-flex justify-content-between align-items-center">
+                      <div>
+                        <i className="fas fa-exchange-alt me-2"></i>
+                        <strong>Location Change Available</strong>
+                        <div className="small">Switch from {currentLocation?.name} to {selectedLocation?.name}</div>
+                      </div>
+                      <button 
+                        className="btn btn-info btn-sm"
+                        onClick={handleSwitchLocation}
+                        disabled={switching}
+                      >
+                        {switching ? (
+                          <>
+                            <i className="fas fa-spinner fa-spin me-1"></i>
+                            Switching...
+                          </>
+                        ) : (
+                          <>
+                            <i className="fas fa-exchange-alt me-1"></i>
+                            Switch Now
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {user?.isClockedIn && !isLocationDifferent && (
+                  <div className="alert alert-secondary">
+                    <i className="fas fa-info-circle me-2"></i>
+                    You are currently at this location
+                  </div>
+                )}
               </div>
             </div>
 
@@ -177,6 +238,17 @@ export default function Clock() {
                     <small className="text-muted">Position</small>
                   </div>
                 </div>
+
+                {/* Location Switch Instructions */}
+                {user?.isClockedIn && (
+                  <div className="mt-3 pt-3 border-top">
+                    <h6 className="small text-muted mb-2">LOCATION SWITCHING</h6>
+                    <small className="text-muted">
+                      <i className="fas fa-info-circle me-1"></i>
+                      You can switch locations while on duty. Select a new location above and click "Switch Now" to move to a different site.
+                    </small>
+                  </div>
+                )}
               </div>
             </div>
           </div>

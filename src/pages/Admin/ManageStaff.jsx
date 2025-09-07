@@ -3,14 +3,27 @@ import { useAuth } from '../../context/AuthContext'
 import { getFullName, getUserById } from '../../config/seedUsers'
 
 export default function ManageStaff(){
-  const { allUsers, updateStaff, deactivateUser, reactivateUser, locations, departments } = useAuth()
-  const [filters, setFilters] = useState({
+  const { 
+    allUsers, 
+    updateStaff, 
+    deactivateUser, 
+    reactivateUser, 
+    locations, 
+    departments,
+    saveFilterState,
+    getFilterState
+  } = useAuth()
+  
+  // FILTER STATE PERSISTENCE
+  const savedFilters = getFilterState('admin-manage-staff') || {
     search: '',
     department: '',
     role: '',
-    status: 'active', // Default to active users only
+    status: 'active',
     manager: ''
-  })
+  }
+
+  const [filters, setFilters] = useState(savedFilters)
   const [sortConfig, setSortConfig] = useState({
     key: 'staffName',
     direction: 'asc'
@@ -19,8 +32,12 @@ export default function ManageStaff(){
   const [itemsPerPage, setItemsPerPage] = useState(25)
   const [editingUser, setEditingUser] = useState(null)
   const [editForm, setEditForm] = useState({})
+  
+  // DEACTIVATION MODALS - REPLACE BROWSER ALERTS
   const [showDeactivateModal, setShowDeactivateModal] = useState(null)
   const [deactivateReason, setDeactivateReason] = useState('')
+  const [showCeoReplacementModal, setShowCeoReplacementModal] = useState(null)
+  const [replacementCeoEmail, setReplacementCeoEmail] = useState('')
 
   const departmentsList = Object.values(departments).filter(dept => dept.isActive)
   const locationsList = Object.values(locations).filter(loc => loc.isActive)
@@ -116,11 +133,12 @@ export default function ManageStaff(){
     return filteredAndSortedStaff.slice(startIndex, startIndex + itemsPerPage)
   }, [filteredAndSortedStaff, currentPage, itemsPerPage])
 
-  // Reset pagination when filters change
+  // Reset pagination when filters change and save filter state
   const handleFilterChange = useCallback((newFilters) => {
     setFilters(newFilters)
     setCurrentPage(1)
-  }, [])
+    saveFilterState('admin-manage-staff', newFilters) // PERSIST FILTERS
+  }, [saveFilterState])
 
   // Sorting handler
   const handleSort = useCallback((key) => {
@@ -151,18 +169,17 @@ export default function ManageStaff(){
     
     // Validation
     if (editForm.role === 'ceo' && editForm.managerId) {
-      alert('CEO cannot have a manager')
+      setEditForm(prev => ({ ...prev, managerId: '' }))
       return
     }
     
     if ((editForm.role === 'admin' || editForm.role === 'security') && editForm.isManager) {
-      alert(`${editForm.role} cannot be a manager`)
+      setEditForm(prev => ({ ...prev, isManager: false }))
       return
     }
     
     if (editForm.role !== 'ceo' && !editForm.managerId) {
-      alert('Manager selection is required for non-CEO roles')
-      return
+      return // Don't save without manager
     }
 
     updateStaff(editingUser, editForm)
@@ -175,42 +192,76 @@ export default function ManageStaff(){
     setEditForm({})
   }
 
+  // HANDLE DEACTIVATION - CEO CHECK
   const handleDeactivateUser = async () => {
-    if (!deactivateReason.trim()) {
-      alert('Please provide a reason for deactivation')
+    const userToDeactivate = allUsers[showDeactivateModal.email]
+    
+    // CHECK IF CEO NEEDS REPLACEMENT
+    if (userToDeactivate.role === 'ceo') {
+      setShowCeoReplacementModal(showDeactivateModal)
+      setShowDeactivateModal(null)
       return
+    }
+
+    // REGULAR USER DEACTIVATION
+    if (!deactivateReason.trim()) {
+      return // Don't proceed without reason
     }
 
     try {
       await deactivateUser(showDeactivateModal.email, deactivateReason)
       setShowDeactivateModal(null)
       setDeactivateReason('')
-      alert('User deactivated successfully')
+      // SUCCESS NOTIFICATION - NO BROWSER ALERT
     } catch (err) {
-      alert(err.message)
+      console.error('Deactivation error:', err.message)
+      // ERROR NOTIFICATION - NO BROWSER ALERT
+    }
+  }
+
+  // CEO DEACTIVATION WITH REPLACEMENT
+  const handleCeoDeactivation = async () => {
+    if (!replacementCeoEmail) {
+      return // Don't proceed without replacement
+    }
+
+    if (!deactivateReason.trim()) {
+      return // Don't proceed without reason
+    }
+
+    try {
+      await deactivateUser(showCeoReplacementModal.email, deactivateReason, replacementCeoEmail)
+      setShowCeoReplacementModal(null)
+      setReplacementCeoEmail('')
+      setDeactivateReason('')
+      // SUCCESS NOTIFICATION - NO BROWSER ALERT
+    } catch (err) {
+      console.error('CEO deactivation error:', err.message)
+      // ERROR NOTIFICATION - NO BROWSER ALERT
     }
   }
 
   const handleReactivateUser = async (email) => {
-    if (window.confirm('Are you sure you want to reactivate this user?')) {
-      try {
-        await reactivateUser(email)
-        alert('User reactivated successfully')
-      } catch (err) {
-        alert(err.message)
-      }
+    try {
+      await reactivateUser(email)
+      // SUCCESS NOTIFICATION - NO BROWSER ALERT
+    } catch (err) {
+      console.error('Reactivation error:', err.message)
+      // ERROR NOTIFICATION - NO BROWSER ALERT
     }
   }
 
   const clearFilters = () => {
-    setFilters({
+    const defaultFilters = {
       search: '',
       department: '',
       role: '',
-      status: 'active', // Reset to default active filter
+      status: 'active',
       manager: ''
-    })
+    }
+    setFilters(defaultFilters)
     setCurrentPage(1)
+    saveFilterState('admin-manage-staff', defaultFilters) // PERSIST CLEAR
   }
 
   const getRoleBadge = (role) => {
@@ -256,6 +307,15 @@ export default function ManageStaff(){
     
     return usersList.filter(user => 
       user.isManager && user.isActive
+    )
+  }
+
+  // Get potential CEO replacements (active staff who are managers)
+  const getPotentialCeoReplacements = () => {
+    return Object.entries(allUsers).filter(([email, user]) => 
+      user.role === 'staff' && 
+      user.isActive && 
+      user.isManager
     )
   }
 
@@ -559,6 +619,7 @@ export default function ManageStaff(){
                                 {user.jobTitle && <div className="text-muted small">{user.jobTitle}</div>}
                                 <div className="d-flex gap-1 mt-1">
                                   {user.isManager && <span className="badge bg-info">Manager</span>}
+                                  {user.role === 'ceo' && <span className="badge bg-warning text-dark">CEO</span>}
                                 </div>
                               </div>
                             )}
@@ -641,7 +702,6 @@ export default function ManageStaff(){
                           </td>
                           <td>
                             <div className="d-flex flex-column gap-1">
-                              {/* Only show inactive badge for inactive users */}
                               {!user.isActive && <span className="badge bg-danger">Inactive</span>}
                               {!user.verified && <span className="badge bg-warning text-dark">Unverified</span>}
                               {user.isClockedIn && user.isActive && <span className="badge bg-success">On Duty</span>}
@@ -665,24 +725,22 @@ export default function ManageStaff(){
                                 >
                                   <i className="fas fa-edit"></i>
                                 </button>
-                                {user.role !== 'ceo' && (
-                                  user.isActive ? (
-                                    <button 
-                                      className="btn btn-outline-danger"
-                                      onClick={() => setShowDeactivateModal(user)}
-                                      title="Deactivate User"
-                                    >
-                                      <i className="fas fa-ban"></i>
-                                    </button>
-                                  ) : (
-                                    <button 
-                                      className="btn btn-outline-success"
-                                      onClick={() => handleReactivateUser(user.email)}
-                                      title="Reactivate User"
-                                    >
-                                      <i className="fas fa-user-check"></i>
-                                    </button>
-                                  )
+                                {user.isActive ? (
+                                  <button 
+                                    className="btn btn-outline-danger"
+                                    onClick={() => setShowDeactivateModal(user)}
+                                    title="Deactivate User"
+                                  >
+                                    <i className="fas fa-ban"></i>
+                                  </button>
+                                ) : (
+                                  <button 
+                                    className="btn btn-outline-success"
+                                    onClick={() => handleReactivateUser(user.email)}
+                                    title="Reactivate User"
+                                  >
+                                    <i className="fas fa-user-check"></i>
+                                  </button>
                                 )}
                               </div>
                             )}
@@ -772,7 +830,7 @@ export default function ManageStaff(){
           </div>
         </div>
 
-        {/* Deactivate User Modal */}
+        {/* REGULAR DEACTIVATE USER MODAL - REPLACES BROWSER ALERTS */}
         {showDeactivateModal && (
           <div className="modal show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
             <div className="modal-dialog">
@@ -823,6 +881,99 @@ export default function ManageStaff(){
                   >
                     <i className="fas fa-ban me-1"></i>
                     Deactivate User
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* CEO REPLACEMENT MODAL - NEW FEATURE */}
+        {showCeoReplacementModal && (
+          <div className="modal show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <div className="modal-dialog modal-lg">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">
+                    <i className="fas fa-crown text-warning me-2"></i>
+                    CEO Deactivation - Replacement Required
+                  </h5>
+                  <button 
+                    type="button" 
+                    className="btn-close"
+                    onClick={() => setShowCeoReplacementModal(null)}
+                  ></button>
+                </div>
+                <div className="modal-body">
+                  <div className="alert alert-danger">
+                    <strong>Critical Action:</strong> You are about to deactivate the CEO account for{' '}
+                    <strong>{getFullName(showCeoReplacementModal)}</strong>.
+                    A replacement CEO must be appointed before proceeding.
+                  </div>
+                  
+                  <div className="mb-3">
+                    <label className="form-label">Select Replacement CEO *</label>
+                    <select 
+                      className="form-select"
+                      value={replacementCeoEmail}
+                      onChange={(e) => setReplacementCeoEmail(e.target.value)}
+                      required
+                    >
+                      <option value="">Select a manager to promote to CEO</option>
+                      {getPotentialCeoReplacements().map(([email, user]) => (
+                        <option key={user.id} value={email}>
+                          {getFullName(user)} - {user.jobTitle || user.role} ({user.department})
+                        </option>
+                      ))}
+                    </select>
+                    <small className="text-muted">
+                      Only active managers are eligible for CEO promotion
+                    </small>
+                  </div>
+                  
+                  <div className="mb-3">
+                    <label className="form-label">Reason for CEO Change *</label>
+                    <textarea 
+                      className="form-control"
+                      value={deactivateReason}
+                      onChange={(e) => setDeactivateReason(e.target.value)}
+                      rows="3"
+                      placeholder="Please provide a reason for this CEO change..."
+                      required
+                    />
+                  </div>
+
+                  {replacementCeoEmail && (
+                    <div className="alert alert-info">
+                      <h6 className="alert-heading">
+                        <i className="fas fa-info-circle me-2"></i>
+                        Changes Summary:
+                      </h6>
+                      <ul className="mb-0">
+                        <li><strong>Current CEO:</strong> {getFullName(showCeoReplacementModal)} will be deactivated</li>
+                        <li><strong>New CEO:</strong> {getFullName(allUsers[replacementCeoEmail])} will be promoted to CEO</li>
+                        <li>The new CEO will automatically become a manager with no superior</li>
+                        <li>All CEO privileges will be transferred immediately</li>
+                      </ul>
+                    </div>
+                  )}
+                </div>
+                <div className="modal-footer">
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary"
+                    onClick={() => setShowCeoReplacementModal(null)}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn-danger"
+                    onClick={handleCeoDeactivation}
+                    disabled={!replacementCeoEmail || !deactivateReason.trim()}
+                  >
+                    <i className="fas fa-exchange-alt me-1"></i>
+                    Transfer CEO & Deactivate
                   </button>
                 </div>
               </div>

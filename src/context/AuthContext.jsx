@@ -51,6 +51,12 @@ export function AuthProvider({ children }) {
     return saved ? JSON.parse(saved) : seedDepartments
   })
 
+  // Filter state persistence
+  const [filterStates, setFilterStates] = useState(()=>{
+    const saved = localStorage.getItem('sc_filter_states')
+    return saved ? JSON.parse(saved) : {}
+  })
+
   // OTP storage for both verification and password reset
   const [activeOTPs, setActiveOTPs] = useState(()=>{
     const saved = localStorage.getItem('sc_active_otps')
@@ -87,6 +93,10 @@ export function AuthProvider({ children }) {
     localStorage.setItem('sc_active_otps', JSON.stringify(activeOTPs))
   }, [activeOTPs])
 
+  useEffect(()=>{
+    localStorage.setItem('sc_filter_states', JSON.stringify(filterStates))
+  }, [filterStates])
+
   // Backend-ready API simulation functions
   const apiCall = async (endpoint, options = {}) => {
     // Simulate API delay
@@ -97,6 +107,18 @@ export function AuthProvider({ children }) {
     
     // For now, return success
     return { success: true }
+  }
+
+  // Filter state management
+  const saveFilterState = (page, filters) => {
+    setFilterStates(prev => ({
+      ...prev,
+      [page]: filters
+    }))
+  }
+
+  const getFilterState = (page) => {
+    return filterStates[page] || {}
   }
 
   const login = ({ email, password, roleHint }) => {
@@ -119,7 +141,7 @@ export function AuthProvider({ children }) {
       body: { email, password, roleHint }
     })
     
-    // Fixed login redirections
+    // REDIRECT LOGIC - Always redirect to appropriate dashboard even if accessing other portals
     if (u.role === 'staff') navigate('/clock', { replace: true })
     else if (u.role === 'admin') navigate('/admin-dashboard', { replace: true })
     else if (u.role === 'security') navigate('/security-dashboard', { replace: true })
@@ -268,6 +290,7 @@ export function AuthProvider({ children }) {
     return true
   }
 
+  // UPDATED: Allow location switching while on duty
   const clockIn = (locationId = null) => {
     // Default to user's assigned location or main office
     const selectedLocationId = locationId || user.assignedLocationId || 'loc_001'
@@ -283,11 +306,11 @@ export function AuthProvider({ children }) {
     }
     
     setClockActivities(prev => [activity, ...prev])
-    setUser(prev => ({ ...prev, isClockedIn: true }))
+    setUser(prev => ({ ...prev, isClockedIn: true, currentLocationId: selectedLocationId }))
     
     setAllUsers(prev => ({
       ...prev,
-      [user.email]: { ...prev[user.email], isClockedIn: true }
+      [user.email]: { ...prev[user.email], isClockedIn: true, currentLocationId: selectedLocationId }
     }))
 
     // Backend API call simulation
@@ -298,8 +321,8 @@ export function AuthProvider({ children }) {
   }
 
   const clockOut = (locationId = null) => {
-    // Default to user's assigned location or main office
-    const selectedLocationId = locationId || user.assignedLocationId || 'loc_001'
+    // Default to user's current location or assigned location
+    const selectedLocationId = locationId || user.currentLocationId || user.assignedLocationId || 'loc_001'
     const selectedLocation = getLocationById(selectedLocationId)
     
     const activity = {
@@ -312,11 +335,11 @@ export function AuthProvider({ children }) {
     }
     
     setClockActivities(prev => [activity, ...prev])
-    setUser(prev => ({ ...prev, isClockedIn: false }))
+    setUser(prev => ({ ...prev, isClockedIn: false, currentLocationId: null }))
     
     setAllUsers(prev => ({
       ...prev,
-      [user.email]: { ...prev[user.email], isClockedIn: false }
+      [user.email]: { ...prev[user.email], isClockedIn: false, currentLocationId: null }
     }))
 
     // Backend API call simulation
@@ -324,6 +347,53 @@ export function AuthProvider({ children }) {
       method: 'POST',
       body: { staffId: user.id, locationId: selectedLocationId }
     })
+  }
+
+  // NEW: Switch location while on duty
+  const switchLocation = (newLocationId) => {
+    if (!user.isClockedIn) {
+      throw new Error('Cannot switch location while not clocked in')
+    }
+
+    const oldLocationId = user.currentLocationId || user.assignedLocationId
+    const oldLocation = getLocationById(oldLocationId)
+    const newLocation = getLocationById(newLocationId)
+
+    // Create clock out activity for old location
+    const clockOutActivity = {
+      id: `ca_${Date.now()}_out`,
+      staffId: user.id,
+      action: 'clock_out',
+      timestamp: new Date().toISOString(),
+      locationId: oldLocationId,
+      location: oldLocation?.name || 'Unknown Location'
+    }
+
+    // Create clock in activity for new location (1 second later to ensure proper ordering)
+    const clockInActivity = {
+      id: `ca_${Date.now() + 1}_in`,
+      staffId: user.id,
+      action: 'clock_in',
+      timestamp: new Date(Date.now() + 1000).toISOString(),
+      locationId: newLocationId,
+      location: newLocation?.name || 'Unknown Location'
+    }
+
+    setClockActivities(prev => [clockInActivity, clockOutActivity, ...prev])
+    setUser(prev => ({ ...prev, currentLocationId: newLocationId }))
+    
+    setAllUsers(prev => ({
+      ...prev,
+      [user.email]: { ...prev[user.email], currentLocationId: newLocationId }
+    }))
+
+    // Backend API call simulation
+    apiCall('/api/clock/switch-location', {
+      method: 'POST',
+      body: { staffId: user.id, fromLocationId: oldLocationId, toLocationId: newLocationId }
+    })
+
+    return { success: true, newLocation: newLocation?.name }
   }
 
   const submitLeaveRequest = (requestData) => {
@@ -378,8 +448,14 @@ export function AuthProvider({ children }) {
     })
   }
 
+  // UPDATED: Require notes for rejections
   const processLeaveRequest = (requestId, status, notes = null) => {
     const request = leaveRequests.find(req => req.id === requestId)
+    
+    // REQUIRE REJECTION REASON
+    if (status === 'rejected' && !notes?.trim()) {
+      throw new Error('Rejection reason is required')
+    }
     
     setLeaveRequests(prev => prev.map(req => 
       req.id === requestId 
@@ -388,7 +464,7 @@ export function AuthProvider({ children }) {
             status,
             processedBy: user.id, // Use ID instead of email
             processedDate: new Date().toISOString(),
-            processingNotes: (request?.type === 'Emergency' || request?.type === 'Sick') ? notes : null
+            processingNotes: (request?.type === 'Emergency' || request?.type === 'Sick' || status === 'rejected') ? notes : null
           }
         : req
     ))
@@ -465,11 +541,38 @@ export function AuthProvider({ children }) {
     }
   }
 
-  // NEW: Set user inactive with confirmation
-  const deactivateUser = async (email, reason = '') => {
-    const user = allUsers[email]
-    if (!user) throw new Error('User not found')
-    if (user.role === 'ceo') throw new Error('Cannot deactivate CEO')
+  // UPDATED: Allow CEO deactivation with replacement requirement
+  const deactivateUser = async (email, reason = '', replacementCeoEmail = null) => {
+    const userToDeactivate = allUsers[email]
+    if (!userToDeactivate) throw new Error('User not found')
+    
+    // If deactivating CEO, ensure replacement is provided
+    if (userToDeactivate.role === 'ceo') {
+      if (!replacementCeoEmail) {
+        throw new Error('Must appoint a replacement CEO before deactivating current CEO')
+      }
+      
+      const replacementUser = allUsers[replacementCeoEmail]
+      if (!replacementUser) {
+        throw new Error('Replacement CEO not found')
+      }
+      
+      if (!replacementUser.isActive) {
+        throw new Error('Replacement CEO must be an active user')
+      }
+
+      // Promote replacement to CEO
+      setAllUsers(prev => ({
+        ...prev,
+        [replacementCeoEmail]: {
+          ...prev[replacementCeoEmail],
+          role: 'ceo',
+          isManager: true,
+          managerId: null,
+          updatedAt: new Date().toISOString()
+        }
+      }))
+    }
     
     setAllUsers(prev => ({
       ...prev,
@@ -483,9 +586,9 @@ export function AuthProvider({ children }) {
     }))
 
     // Backend API call simulation
-    await apiCall(`/api/admin/staff/${user.id}/deactivate`, {
+    await apiCall(`/api/admin/staff/${userToDeactivate.id}/deactivate`, {
       method: 'POST',
-      body: { reason }
+      body: { reason, replacementCeoEmail }
     })
 
     return { success: true }
@@ -713,9 +816,12 @@ export function AuthProvider({ children }) {
     }))
   }
 
-  // Security-specific helpers
+  // UPDATED: Security-specific helpers - restrict to assigned location only
   const getStaffForSite = (locationId) => {
     if (user?.role !== 'security') return []
+    
+    // Security can only see their assigned location
+    if (user.assignedLocationId !== locationId) return []
     
     return Object.values(allUsers).filter(staff => 
       staff.role === 'staff' && 
@@ -736,7 +842,8 @@ export function AuthProvider({ children }) {
     resendOTP,
     verifyOTP,
     clockIn, 
-    clockOut, 
+    clockOut,
+    switchLocation, // NEW: Location switching
     isOnManager,
     leaveRequests: getEnrichedLeaveRequests(),
     clockActivities: getEnrichedClockActivities(),
@@ -744,6 +851,9 @@ export function AuthProvider({ children }) {
     locations,
     departments,
     activeOTPs,
+    filterStates, // NEW: Filter state persistence
+    saveFilterState, // NEW: Save filter state
+    getFilterState, // NEW: Get filter state
     submitLeaveRequest,
     updateLeaveRequest,
     processLeaveRequest,
@@ -764,7 +874,7 @@ export function AuthProvider({ children }) {
     rawClockActivities: clockActivities,
     // Constants
     LEAVE_TYPES
-  }),[user, isOnManager, leaveRequests, clockActivities, allUsers, locations, departments, activeOTPs])
+  }),[user, isOnManager, leaveRequests, clockActivities, allUsers, locations, departments, activeOTPs, filterStates])
   
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

@@ -2,15 +2,19 @@ import { useState, useMemo, useCallback } from 'react'
 import { useAuth } from '../../context/AuthContext'
 
 export default function ClockActivities() {
-  const { clockActivities, allUsers } = useAuth()
-  const [filters, setFilters] = useState({
+  const { clockActivities, allUsers, saveFilterState, getFilterState } = useAuth()
+  
+  // FILTER STATE PERSISTENCE
+  const savedFilters = getFilterState('admin-clock-activities') || {
     staff: '',
     department: '',
     action: '',
     dateFrom: '',
     dateTo: '',
     location: ''
-  })
+  }
+
+  const [filters, setFilters] = useState(savedFilters)
   const [sortConfig, setSortConfig] = useState({
     key: 'timestamp',
     direction: 'desc'
@@ -90,11 +94,12 @@ export default function ClockActivities() {
     return filteredAndSortedActivities.slice(startIndex, startIndex + itemsPerPage)
   }, [filteredAndSortedActivities, currentPage, itemsPerPage])
 
-  // Reset pagination when filters change
+  // Reset pagination when filters change and save filter state
   const handleFilterChange = useCallback((newFilters) => {
     setFilters(newFilters)
     setCurrentPage(1)
-  }, [])
+    saveFilterState('admin-clock-activities', newFilters) // PERSIST FILTERS
+  }, [saveFilterState])
 
   // Sorting handler
   const handleSort = useCallback((key) => {
@@ -129,15 +134,17 @@ export default function ClockActivities() {
   }
 
   const clearFilters = () => {
-    setFilters({
+    const defaultFilters = {
       staff: '',
       department: '',
       action: '',
       dateFrom: '',
       dateTo: '',
       location: ''
-    })
+    }
+    setFilters(defaultFilters)
     setCurrentPage(1)
+    saveFilterState('admin-clock-activities', defaultFilters) // PERSIST CLEAR
   }
 
   const getActionBadge = (action) => {

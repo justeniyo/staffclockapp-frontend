@@ -1,9 +1,10 @@
 import { useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { getFullName } from '../../config/seedUsers'
+import { getFullName, getUserById } from '../../config/seedUsers'
 
 export default function CEODashboard(){
-  const { allUsers, rawLeaveRequests, clockActivities } = useAuth()
+  const { allUsers, rawLeaveRequests, clockActivities, user } = useAuth()
   
   // Executive-level statistics and insights
   const organizationData = useMemo(() => {
@@ -64,11 +65,19 @@ export default function CEODashboard(){
       totalActivities: clockActivities.length
     }
 
-    // Recent requests requiring CEO approval (executives' requests)
-    const executiveRequests = thisYearRequests.filter(req => {
+    // FIX: CEO should see requests that require CEO approval
+    // This includes: direct reports to CEO + CEO's own department requests
+    const ceoDirectReports = usersList.filter(u => u.managerId === user.id)
+    const ceoDepartmentRequests = thisYearRequests.filter(req => {
       const staff = usersList.find(u => u.id === req.staffId)
-      return staff && staff.managerId === null && staff.role !== 'ceo' // Direct reports to CEO
+      // Show requests from CEO's direct reports OR from CEO's department
+      return staff && (
+        staff.managerId === user.id || 
+        (staff.department === user.department && req.status === 'pending')
+      )
     })
+
+    const pendingCEORequests = ceoDepartmentRequests.filter(req => req.status === 'pending').length
 
     return {
       totalStaff: usersList.length,
@@ -79,17 +88,24 @@ export default function CEODashboard(){
       roleStats,
       leaveStats,
       activityStats,
-      executiveRequests: executiveRequests.slice(0, 5),
-      pendingExecutiveRequests: executiveRequests.filter(req => req.status === 'pending').length
+      ceoRequests: ceoDepartmentRequests.slice(0, 5), // Updated to show CEO relevant requests
+      pendingCEORequests // Updated count
     }
-  }, [allUsers, rawLeaveRequests, clockActivities])
+  }, [allUsers, rawLeaveRequests, clockActivities, user])
 
   // Get direct reports (executives who report to CEO)
   const directReports = useMemo(() => {
     return Object.values(allUsers).filter(user => 
-      user.managerId === null && user.role !== 'ceo' && user.role !== 'system'
+      user.managerId === user.id && user.role !== 'ceo' && user.role !== 'system'
     )
-  }, [allUsers])
+  }, [allUsers, user.id])
+
+  // CEO team members (same department)
+  const teamMembers = useMemo(() => {
+    return Object.values(allUsers).filter(staff => 
+      staff.department === user.department && staff.id !== user.id && staff.isActive
+    )
+  }, [allUsers, user])
 
   const getStatusBadge = (status) => {
     const badges = {
@@ -120,6 +136,12 @@ export default function CEODashboard(){
       <div className="page-header">
         <h2 className="page-title">Executive Dashboard</h2>
         <p className="mb-0">Organization overview and strategic insights</p>
+        {/* CEO Manager Portal Access */}
+        {user.isManager && teamMembers.length > 0 && (
+          <small className="text-muted d-block">
+            Managing {teamMembers.length} team member{teamMembers.length !== 1 ? 's' : ''} in {user.department}
+          </small>
+        )}
       </div>
       
       <div className="page-content">
@@ -183,28 +205,78 @@ export default function CEODashboard(){
           </div>
         </div>
 
-        {/* Executive Actions */}
-        {organizationData.pendingExecutiveRequests > 0 && (
+        {/* Executive Actions - Updated for CEO manager access */}
+        {organizationData.pendingCEORequests > 0 && (
           <div className="row g-4 mb-4">
             <div className="col-12">
               <div className="alert alert-warning">
                 <div className="d-flex justify-content-between align-items-center">
                   <div>
                     <i className="fas fa-exclamation-triangle me-2"></i>
-                    <strong>Executive Approval Required</strong>
+                    <strong>CEO Approval Required</strong>
                     <div className="small">
-                      {organizationData.pendingExecutiveRequests} leave request{organizationData.pendingExecutiveRequests !== 1 ? 's' : ''} from your direct reports require{organizationData.pendingExecutiveRequests === 1 ? 's' : ''} approval
+                      {organizationData.pendingCEORequests} leave request{organizationData.pendingCEORequests !== 1 ? 's' : ''} require{organizationData.pendingCEORequests === 1 ? 's' : ''} your approval
                     </div>
                   </div>
-                  <button className="btn btn-warning">
+                  <Link to="/manager/leave-requests" className="btn btn-warning">
                     <i className="fas fa-gavel me-2"></i>
                     Review Requests
-                  </button>
+                  </Link>
                 </div>
               </div>
             </div>
           </div>
         )}
+
+        {/* Quick Actions - CEO Manager Portal */}
+        <div className="row g-4 mb-4">
+          <div className="col-12">
+            <div className="card">
+              <div className="card-header">
+                <h6 className="mb-0">
+                  <i className="fas fa-bolt me-2"></i>
+                  Executive Actions
+                </h6>
+              </div>
+              <div className="card-body">
+                <div className="row g-3">
+                  {/* CEO can access manager portal if they have team members */}
+                  {user.isManager && teamMembers.length > 0 && (
+                    <div className="col-md-3">
+                      <Link to="/manager-dashboard" className="btn btn-outline-primary w-100">
+                        <i className="fas fa-users-cog me-2"></i>
+                        Manager Portal
+                        {organizationData.pendingCEORequests > 0 && (
+                          <span className="badge bg-warning text-dark ms-2">
+                            {organizationData.pendingCEORequests}
+                          </span>
+                        )}
+                      </Link>
+                    </div>
+                  )}
+                  <div className="col-md-3">
+                    <Link to="/staff/request-leave" className="btn btn-outline-secondary w-100">
+                      <i className="fas fa-calendar-plus me-2"></i>
+                      Request Leave
+                    </Link>
+                  </div>
+                  <div className="col-md-3">
+                    <Link to="/staff-dashboard" className="btn btn-outline-info w-100">
+                      <i className="fas fa-user me-2"></i>
+                      Staff Portal
+                    </Link>
+                  </div>
+                  <div className="col-md-3">
+                    <Link to="/clock" className="btn btn-outline-success w-100">
+                      <i className="fas fa-clock me-2"></i>
+                      Clock In/Out
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
         
         <div className="row g-4">
           {/* Department Overview */}
@@ -248,24 +320,24 @@ export default function CEODashboard(){
             </div>
           </div>
           
-          {/* Recent Executive Requests */}
+          {/* CEO Leave Requests - Updated to show relevant requests */}
           <div className="col-lg-6">
             <div className="card">
               <div className="card-header">
                 <h6 className="mb-0">
                   <i className="fas fa-crown me-2"></i>
-                  Executive Leave Requests
+                  Leave Requests Requiring CEO Approval
                 </h6>
               </div>
               <div className="card-body">
-                {organizationData.executiveRequests.length === 0 ? (
+                {organizationData.ceoRequests.length === 0 ? (
                   <div className="text-center py-4">
                     <i className="fas fa-calendar-check fa-3x text-muted mb-3"></i>
-                    <p className="text-muted">No recent executive leave requests.</p>
+                    <p className="text-muted">No leave requests requiring CEO approval.</p>
                   </div>
                 ) : (
                   <div>
-                    {organizationData.executiveRequests.map(req => {
+                    {organizationData.ceoRequests.map(req => {
                       const staff = Object.values(allUsers).find(u => u.id === req.staffId)
                       return (
                         <div key={req.id} className="d-flex justify-content-between align-items-center py-2 border-bottom">
@@ -273,7 +345,7 @@ export default function CEODashboard(){
                             <i className={`fas ${getLeaveTypeIcon(req.type)} me-3 text-primary`}></i>
                             <div>
                               <div className="fw-semibold">
-                                {staff ? getFullName(staff) : 'Unknown Executive'}
+                                {staff ? getFullName(staff) : 'Unknown Staff'}
                               </div>
                               <small className="text-muted">
                                 {staff?.jobTitle || staff?.role} • {req.type} • {req.startDate} to {req.endDate}
@@ -291,6 +363,13 @@ export default function CEODashboard(){
                         </div>
                       )
                     })}
+                    {user.isManager && (
+                      <div className="text-center mt-3">
+                        <Link to="/manager/leave-requests" className="btn btn-outline-primary btn-sm">
+                          View All Requests
+                        </Link>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

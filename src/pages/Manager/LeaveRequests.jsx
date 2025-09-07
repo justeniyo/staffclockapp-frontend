@@ -2,14 +2,18 @@ import { useState, useMemo, useCallback } from 'react'
 import { useAuth } from '../../context/AuthContext'
 
 export default function LeaveRequests() {
-  const { leaveRequests, processLeaveRequest, user, allUsers } = useAuth()
-  const [filters, setFilters] = useState({
+  const { leaveRequests, processLeaveRequest, user, allUsers, saveFilterState, getFilterState } = useAuth()
+  
+  // FILTER STATE PERSISTENCE
+  const savedFilters = getFilterState('manager-leave-requests') || {
     search: '',
     type: '',
     status: 'all',
     dateFrom: '',
     dateTo: ''
-  })
+  }
+
+  const [filters, setFilters] = useState(savedFilters)
   const [sortConfig, setSortConfig] = useState({
     key: 'requestDate',
     direction: 'desc'
@@ -18,6 +22,7 @@ export default function LeaveRequests() {
   const [itemsPerPage, setItemsPerPage] = useState(25)
   const [selectedRequest, setSelectedRequest] = useState(null)
   const [processingNotes, setProcessingNotes] = useState('')
+  const [actionType, setActionType] = useState('') // 'approve' or 'reject'
 
   // Get team members who report to this manager
   const teamMembers = Object.values(allUsers).filter(staff => staff.managerId === user.id)
@@ -88,11 +93,12 @@ export default function LeaveRequests() {
     return filteredAndSortedRequests.slice(startIndex, startIndex + itemsPerPage)
   }, [filteredAndSortedRequests, currentPage, itemsPerPage])
 
-  // Reset pagination when filters change
+  // Reset pagination when filters change and save filter state
   const handleFilterChange = useCallback((newFilters) => {
     setFilters(newFilters)
     setCurrentPage(1)
-  }, [])
+    saveFilterState('manager-leave-requests', newFilters) // PERSIST FILTERS
+  }, [saveFilterState])
 
   // Sorting handler
   const handleSort = useCallback((key) => {
@@ -106,36 +112,47 @@ export default function LeaveRequests() {
     return type === 'Emergency' || type === 'Sick'
   }
 
+  // UPDATED: Handle processing with required rejection notes
   const handleProcess = (requestId, status) => {
-    const request = filteredAndSortedRequests.find(req => req.id === requestId)
-    
-    // For Emergency and Sick leaves, require notes
-    if (requiresNotes(request?.type) && status !== 'pending') {
-      if (!processingNotes.trim()) {
-        alert(`Processing notes are required for ${request.type} leave requests`)
-        return
+    try {
+      const request = filteredAndSortedRequests.find(req => req.id === requestId)
+      
+      // REQUIRE REJECTION REASON
+      if (status === 'rejected' && !processingNotes.trim()) {
+        throw new Error('Rejection reason is required')
       }
+      
+      // For Emergency and Sick leaves, require notes for approval too
+      if (requiresNotes(request?.type) && status !== 'pending' && !processingNotes.trim()) {
+        throw new Error(`Processing notes are required for ${request.type} leave requests`)
+      }
+      
+      processLeaveRequest(requestId, status, processingNotes)
+      setSelectedRequest(null)
+      setProcessingNotes('')
+      setActionType('')
+    } catch (error) {
+      alert(error.message)
     }
-    
-    processLeaveRequest(requestId, status, processingNotes)
-    setSelectedRequest(null)
-    setProcessingNotes('')
   }
 
-  const openRequestModal = (request) => {
+  const openRequestModal = (request, action = '') => {
     setSelectedRequest(request)
     setProcessingNotes('')
+    setActionType(action)
   }
 
   const clearFilters = () => {
-    setFilters({
+    const defaultFilters = {
       search: '',
       type: '',
       status: 'all',
       dateFrom: '',
       dateTo: ''
-    })
+    }
+    setFilters(defaultFilters)
     setCurrentPage(1)
+    saveFilterState('manager-leave-requests', defaultFilters) // PERSIST CLEAR
   }
 
   const getStatusBadge = (status) => {
@@ -409,13 +426,32 @@ export default function LeaveRequests() {
                               <small className="text-muted">{new Date(req.requestDate).toLocaleTimeString()}</small>
                             </td>
                             <td>
-                              <button 
-                                className="btn btn-outline-primary btn-sm"
-                                onClick={() => openRequestModal(req)}
-                              >
-                                <i className="fas fa-eye me-1"></i>
-                                Review
-                              </button>
+                              {req.status === 'pending' ? (
+                                <div className="btn-group btn-group-sm">
+                                  <button 
+                                    className="btn btn-outline-success"
+                                    onClick={() => openRequestModal(req, 'approve')}
+                                    title="Approve Request"
+                                  >
+                                    <i className="fas fa-check"></i>
+                                  </button>
+                                  <button 
+                                    className="btn btn-outline-danger"
+                                    onClick={() => openRequestModal(req, 'reject')}
+                                    title="Reject Request"
+                                  >
+                                    <i className="fas fa-times"></i>
+                                  </button>
+                                </div>
+                              ) : (
+                                <button 
+                                  className="btn btn-outline-primary btn-sm"
+                                  onClick={() => openRequestModal(req)}
+                                >
+                                  <i className="fas fa-eye me-1"></i>
+                                  View
+                                </button>
+                              )}
                             </td>
                           </tr>
                         )
@@ -503,7 +539,7 @@ export default function LeaveRequests() {
           </div>
         </div>
 
-        {/* Enhanced Review Modal with Notes for Emergency/Sick */}
+        {/* UPDATED: Enhanced Review Modal with Required Rejection Notes */}
         {selectedRequest && (
           <div className="modal show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
             <div className="modal-dialog modal-lg">
@@ -511,7 +547,7 @@ export default function LeaveRequests() {
                 <div className="modal-header">
                   <h5 className="modal-title">
                     <i className="fas fa-calendar-check me-2"></i>
-                    Review Leave Request
+                    {actionType === 'approve' ? 'Approve' : actionType === 'reject' ? 'Reject' : 'Review'} Leave Request
                   </h5>
                   <button 
                     type="button" 
@@ -587,21 +623,33 @@ export default function LeaveRequests() {
                       </div>
                     )}
                     
-                    {/* Processing notes input for Emergency and Sick leaves */}
-                    {selectedRequest.status === 'pending' && requiresNotes(selectedRequest.type) && (
+                    {/* UPDATED: Processing notes input - required for all types when rejecting */}
+                    {selectedRequest.status === 'pending' && (
                       <div className="col-12">
                         <label className="form-label fw-bold">
-                          Processing Notes <span className="text-danger">*</span>
+                          {actionType === 'reject' ? 'Rejection Reason' : 'Processing Notes'}
+                          {(requiresNotes(selectedRequest.type) || actionType === 'reject') && (
+                            <span className="text-danger"> *</span>
+                          )}
                         </label>
                         <textarea 
                           className="form-control"
                           value={processingNotes}
                           onChange={(e) => setProcessingNotes(e.target.value)}
                           rows="3"
-                          placeholder={`Add notes for this ${selectedRequest.type.toLowerCase()} leave request...`}
+                          placeholder={
+                            actionType === 'reject' 
+                              ? 'Please provide a reason for rejecting this request...'
+                              : `Add notes for this ${selectedRequest.type.toLowerCase()} leave request...`
+                          }
                         />
                         <small className="text-muted">
-                          Notes are required when processing {selectedRequest.type.toLowerCase()} leave requests
+                          {actionType === 'reject' 
+                            ? 'A rejection reason is required' 
+                            : requiresNotes(selectedRequest.type)
+                              ? `Notes are required when processing ${selectedRequest.type.toLowerCase()} leave requests`
+                              : 'Add optional notes for this decision'
+                          }
                         </small>
                       </div>
                     )}
@@ -611,31 +659,39 @@ export default function LeaveRequests() {
                   <button 
                     type="button" 
                     className="btn btn-secondary"
-                    onClick={() => setSelectedRequest(null)}
+                    onClick={() => {
+                      setSelectedRequest(null)
+                      setActionType('')
+                      setProcessingNotes('')
+                    }}
                   >
                     <i className="fas fa-times me-1"></i>
                     Close
                   </button>
                   {selectedRequest.status === 'pending' && (
                     <>
-                      <button 
-                        type="button" 
-                        className="btn btn-danger"
-                        onClick={() => handleProcess(selectedRequest.id, 'rejected')}
-                        disabled={requiresNotes(selectedRequest.type) && !processingNotes.trim()}
-                      >
-                        <i className="fas fa-times me-1"></i>
-                        Reject
-                      </button>
-                      <button 
-                        type="button" 
-                        className="btn btn-success"
-                        onClick={() => handleProcess(selectedRequest.id, 'approved')}
-                        disabled={requiresNotes(selectedRequest.type) && !processingNotes.trim()}
-                      >
-                        <i className="fas fa-check me-1"></i>
-                        Approve
-                      </button>
+                      {actionType !== 'approve' && (
+                        <button 
+                          type="button" 
+                          className="btn btn-danger"
+                          onClick={() => handleProcess(selectedRequest.id, 'rejected')}
+                          disabled={!processingNotes.trim()} // ALWAYS require notes for rejection
+                        >
+                          <i className="fas fa-times me-1"></i>
+                          Reject
+                        </button>
+                      )}
+                      {actionType !== 'reject' && (
+                        <button 
+                          type="button" 
+                          className="btn btn-success"
+                          onClick={() => handleProcess(selectedRequest.id, 'approved')}
+                          disabled={requiresNotes(selectedRequest.type) && !processingNotes.trim()}
+                        >
+                          <i className="fas fa-check me-1"></i>
+                          Approve
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
