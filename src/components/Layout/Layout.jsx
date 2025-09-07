@@ -27,27 +27,34 @@ export default function Layout({ children, variant }) {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar-fixed">
-        <Sidebar variant={computedVariant} />
-      </aside>
-
-      <section className="main-col">
+      {/* Fixed Navbar spans full width */}
+      <nav className="navbar-fixed">
         <AppNavbar onToggleMobile={() => setShow(true)} />
+      </nav>
 
-        <Offcanvas placement="end" show={show} onHide={() => setShow(false)} className="bg-dark text-white">
-          <Offcanvas.Header closeButton closeVariant="white">
-            {/* Use consistent role styling instead of Offcanvas.Title */}
-            <div className="sidebar-role-mobile">{getRoleDisplayName()}</div>
-          </Offcanvas.Header>
-          <Offcanvas.Body>
-            <Sidebar variant={computedVariant} />
-          </Offcanvas.Body>
-        </Offcanvas>
+      <div className="main-container">
+        {/* Fixed Sidebar - starts under navbar */}
+        <aside className="sidebar-fixed">
+          <Sidebar variant={computedVariant} />
+        </aside>
 
-        <div className="content-scroll">
-          {children}
-        </div>
-      </section>
+        {/* Main content area */}
+        <section className="main-col">
+          <Offcanvas placement="end" show={show} onHide={() => setShow(false)} className="bg-dark text-white">
+            <Offcanvas.Header closeButton closeVariant="white">
+              {/* Use consistent role styling instead of Offcanvas.Title */}
+              <div className="sidebar-role-mobile">{getRoleDisplayName()}</div>
+            </Offcanvas.Header>
+            <Offcanvas.Body>
+              <Sidebar variant={computedVariant} />
+            </Offcanvas.Body>
+          </Offcanvas>
+
+          <div className="content-scroll">
+            {children}
+          </div>
+        </section>
+      </div>
     </div>
   )
 }

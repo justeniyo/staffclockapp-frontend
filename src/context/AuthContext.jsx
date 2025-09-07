@@ -3,11 +3,16 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { 
   seedUsers, 
   seedLeaveRequests, 
-  seedClockActivities, 
+  seedClockActivities,
+  seedLocations,
+  seedDepartments,
   getFullName,
   getUserById,
   getUserByEmail,
-  getManagerHierarchy 
+  getLocationById,
+  getDepartmentById,
+  getManagerHierarchy,
+  LEAVE_TYPES
 } from '../config/seedUsers'
 
 const AuthContext = createContext()
@@ -36,6 +41,16 @@ export function AuthProvider({ children }) {
     return saved ? JSON.parse(saved) : seedUsers
   })
 
+  const [locations, setLocations] = useState(()=>{
+    const saved = localStorage.getItem('sc_locations')
+    return saved ? JSON.parse(saved) : seedLocations
+  })
+
+  const [departments, setDepartments] = useState(()=>{
+    const saved = localStorage.getItem('sc_departments')
+    return saved ? JSON.parse(saved) : seedDepartments
+  })
+
   // OTP storage for both verification and password reset
   const [activeOTPs, setActiveOTPs] = useState(()=>{
     const saved = localStorage.getItem('sc_active_otps')
@@ -59,6 +74,14 @@ export function AuthProvider({ children }) {
   useEffect(()=>{
     localStorage.setItem('sc_all_users', JSON.stringify(allUsers))
   }, [allUsers])
+
+  useEffect(()=>{
+    localStorage.setItem('sc_locations', JSON.stringify(locations))
+  }, [locations])
+
+  useEffect(()=>{
+    localStorage.setItem('sc_departments', JSON.stringify(departments))
+  }, [departments])
 
   useEffect(()=>{
     localStorage.setItem('sc_active_otps', JSON.stringify(activeOTPs))
@@ -96,10 +119,11 @@ export function AuthProvider({ children }) {
       body: { email, password, roleHint }
     })
     
+    // Fixed login redirections
     if (u.role === 'staff') navigate('/clock', { replace: true })
-    if (u.role === 'admin') navigate('/admin-dashboard', { replace: true })
-    if (u.role === 'security') navigate('/security-dashboard', { replace: true })
-    if (u.role === 'ceo') navigate('/ceo-dashboard', { replace: true })
+    else if (u.role === 'admin') navigate('/admin-dashboard', { replace: true })
+    else if (u.role === 'security') navigate('/security-dashboard', { replace: true })
+    else if (u.role === 'ceo') navigate('/ceo-dashboard', { replace: true })
   }
 
   const logout = () => { 
@@ -244,13 +268,18 @@ export function AuthProvider({ children }) {
     return true
   }
 
-  const clockIn = () => {
+  const clockIn = (locationId = null) => {
+    // Default to user's assigned location or main office
+    const selectedLocationId = locationId || user.assignedLocationId || 'loc_001'
+    const selectedLocation = getLocationById(selectedLocationId)
+    
     const activity = {
       id: `ca_${Date.now()}`,
       staffId: user.id, // Use ID instead of email
       action: 'clock_in', 
       timestamp: new Date().toISOString(),
-      location: 'Main Office' // Default location, can be made dynamic
+      locationId: selectedLocationId,
+      location: selectedLocation?.name || 'Unknown Location' // Backward compatibility
     }
     
     setClockActivities(prev => [activity, ...prev])
@@ -264,17 +293,22 @@ export function AuthProvider({ children }) {
     // Backend API call simulation
     apiCall('/api/clock/in', {
       method: 'POST',
-      body: { staffId: user.id, location: activity.location }
+      body: { staffId: user.id, locationId: selectedLocationId }
     })
   }
 
-  const clockOut = () => {
+  const clockOut = (locationId = null) => {
+    // Default to user's assigned location or main office
+    const selectedLocationId = locationId || user.assignedLocationId || 'loc_001'
+    const selectedLocation = getLocationById(selectedLocationId)
+    
     const activity = {
       id: `ca_${Date.now()}`,
       staffId: user.id, // Use ID instead of email
       action: 'clock_out',
       timestamp: new Date().toISOString(), 
-      location: 'Main Office' // Default location, can be made dynamic
+      locationId: selectedLocationId,
+      location: selectedLocation?.name || 'Unknown Location' // Backward compatibility
     }
     
     setClockActivities(prev => [activity, ...prev])
@@ -288,7 +322,7 @@ export function AuthProvider({ children }) {
     // Backend API call simulation
     apiCall('/api/clock/out', {
       method: 'POST',
-      body: { staffId: user.id, location: activity.location }
+      body: { staffId: user.id, locationId: selectedLocationId }
     })
   }
 
@@ -368,7 +402,7 @@ export function AuthProvider({ children }) {
 
   const registerStaff = (staffData) => {
     const email = staffData.email
-    const defaultPassword = 'password' // Will be hashed in backend
+    const defaultPassword = 'temp123' // Temporary password for new users
     
     const newUser = {
       id: `usr_${Date.now()}`, // Generate new ID
@@ -380,11 +414,12 @@ export function AuthProvider({ children }) {
       department: staffData.department,
       phone: staffData.phone,
       jobTitle: staffData.jobTitle || '',
-      isManager: staffData.isManager || false,
-      managerId: staffData.managerId || null,
-      verified: false, // User needs to verify
+      isManager: staffData.role === 'ceo' ? true : (staffData.isManager || false), // CEO is always manager
+      managerId: staffData.role === 'ceo' ? null : (staffData.managerId || null),
+      verified: false, // User needs to verify then reset password
       isActive: true,
       isClockedIn: false,
+      assignedLocationId: staffData.assignedLocationId || 'loc_001',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     }
@@ -405,7 +440,8 @@ export function AuthProvider({ children }) {
     })
     
     console.log(`Staff registered: ${email}`)
-    console.log(`Default password: ${defaultPassword}`)
+    console.log(`Temporary password: ${defaultPassword}`)
+    console.log(`User must verify account then set new password`)
     return { ...result, defaultPassword } // In production, don't return sensitive data
   }
 
@@ -429,6 +465,210 @@ export function AuthProvider({ children }) {
     }
   }
 
+  // NEW: Set user inactive with confirmation
+  const deactivateUser = async (email, reason = '') => {
+    const user = allUsers[email]
+    if (!user) throw new Error('User not found')
+    if (user.role === 'ceo') throw new Error('Cannot deactivate CEO')
+    
+    setAllUsers(prev => ({
+      ...prev,
+      [email]: { 
+        ...prev[email], 
+        isActive: false,
+        deactivatedAt: new Date().toISOString(),
+        deactivationReason: reason,
+        updatedAt: new Date().toISOString()
+      }
+    }))
+
+    // Backend API call simulation
+    await apiCall(`/api/admin/staff/${user.id}/deactivate`, {
+      method: 'POST',
+      body: { reason }
+    })
+
+    return { success: true }
+  }
+
+  // NEW: Reactivate user
+  const reactivateUser = async (email) => {
+    const user = allUsers[email]
+    if (!user) throw new Error('User not found')
+    
+    setAllUsers(prev => ({
+      ...prev,
+      [email]: { 
+        ...prev[email], 
+        isActive: true,
+        reactivatedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+    }))
+
+    // Backend API call simulation
+    await apiCall(`/api/admin/staff/${user.id}/reactivate`, {
+      method: 'POST'
+    })
+
+    return { success: true }
+  }
+
+  // NEW: Create department
+  const createDepartment = async (departmentData) => {
+    const newDept = {
+      id: `dept_${Date.now()}`,
+      name: departmentData.name,
+      description: departmentData.description || '',
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }
+
+    setDepartments(prev => ({
+      ...prev,
+      [newDept.id]: newDept
+    }))
+
+    // Backend API call simulation
+    await apiCall('/api/admin/departments', {
+      method: 'POST',
+      body: newDept
+    })
+
+    return newDept
+  }
+
+  // NEW: Update department
+  const updateDepartment = async (deptId, updates) => {
+    setDepartments(prev => ({
+      ...prev,
+      [deptId]: {
+        ...prev[deptId],
+        ...updates,
+        updatedAt: new Date().toISOString()
+      }
+    }))
+
+    // Backend API call simulation
+    await apiCall(`/api/admin/departments/${deptId}`, {
+      method: 'PUT',
+      body: updates
+    })
+
+    return { success: true }
+  }
+
+  // NEW: Deactivate department
+  const deactivateDepartment = async (deptId) => {
+    const dept = departments[deptId]
+    if (!dept) throw new Error('Department not found')
+
+    // Check if any active users are in this department
+    const activeUsersInDept = Object.values(allUsers).filter(user => 
+      user.department === dept.name && user.isActive
+    )
+
+    if (activeUsersInDept.length > 0) {
+      throw new Error(`Cannot deactivate department. ${activeUsersInDept.length} active user(s) are assigned to this department.`)
+    }
+
+    setDepartments(prev => ({
+      ...prev,
+      [deptId]: {
+        ...prev[deptId],
+        isActive: false,
+        deactivatedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+    }))
+
+    // Backend API call simulation
+    await apiCall(`/api/admin/departments/${deptId}/deactivate`, {
+      method: 'POST'
+    })
+
+    return { success: true }
+  }
+
+  // NEW: Create location
+  const createLocation = async (locationData) => {
+    const newLocation = {
+      id: `loc_${Date.now()}`,
+      name: locationData.name,
+      address: locationData.address || '',
+      type: locationData.type || 'office',
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }
+
+    setLocations(prev => ({
+      ...prev,
+      [newLocation.id]: newLocation
+    }))
+
+    // Backend API call simulation
+    await apiCall('/api/admin/locations', {
+      method: 'POST',
+      body: newLocation
+    })
+
+    return newLocation
+  }
+
+  // NEW: Update location
+  const updateLocation = async (locationId, updates) => {
+    setLocations(prev => ({
+      ...prev,
+      [locationId]: {
+        ...prev[locationId],
+        ...updates,
+        updatedAt: new Date().toISOString()
+      }
+    }))
+
+    // Backend API call simulation
+    await apiCall(`/api/admin/locations/${locationId}`, {
+      method: 'PUT',
+      body: updates
+    })
+
+    return { success: true }
+  }
+
+  // NEW: Deactivate location
+  const deactivateLocation = async (locationId) => {
+    const location = locations[locationId]
+    if (!location) throw new Error('Location not found')
+
+    // Check if any active users are assigned to this location
+    const activeUsersInLocation = Object.values(allUsers).filter(user => 
+      user.assignedLocationId === locationId && user.isActive
+    )
+
+    if (activeUsersInLocation.length > 0) {
+      throw new Error(`Cannot deactivate location. ${activeUsersInLocation.length} active user(s) are assigned to this location.`)
+    }
+
+    setLocations(prev => ({
+      ...prev,
+      [locationId]: {
+        ...prev[locationId],
+        isActive: false,
+        deactivatedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+    }))
+
+    // Backend API call simulation
+    await apiCall(`/api/admin/locations/${locationId}/deactivate`, {
+      method: 'POST'
+    })
+
+    return { success: true }
+  }
+
   // Helper to get enriched leave requests with staff names
   const getEnrichedLeaveRequests = () => {
     return leaveRequests.map(request => {
@@ -450,12 +690,14 @@ export function AuthProvider({ children }) {
   const getEnrichedClockActivities = () => {
     return clockActivities.map(activity => {
       const staff = getUserById(activity.staffId)
+      const location = getLocationById(activity.locationId)
       
       return {
         ...activity,
         staffName: staff ? getFullName(staff) : 'Unknown Staff',
         staffEmail: staff ? staff.email : 'unknown@company.com',
-        department: staff ? staff.department : 'Unknown'
+        department: staff ? staff.department : 'Unknown',
+        locationName: location ? location.name : (activity.location || 'Unknown Location')
       }
     })
   }
@@ -472,13 +714,14 @@ export function AuthProvider({ children }) {
   }
 
   // Security-specific helpers
-  const getStaffForSite = (site) => {
+  const getStaffForSite = (locationId) => {
     if (user?.role !== 'security') return []
     
     return Object.values(allUsers).filter(staff => 
       staff.role === 'staff' && 
       staff.isActive && 
-      staff.isClockedIn
+      staff.isClockedIn &&
+      staff.assignedLocationId === locationId
     )
   }
 
@@ -498,18 +741,30 @@ export function AuthProvider({ children }) {
     leaveRequests: getEnrichedLeaveRequests(),
     clockActivities: getEnrichedClockActivities(),
     allUsers,
+    locations,
+    departments,
     activeOTPs,
     submitLeaveRequest,
     updateLeaveRequest,
     processLeaveRequest,
     registerStaff,
     updateStaff,
+    deactivateUser,
+    reactivateUser,
+    createDepartment,
+    updateDepartment,
+    deactivateDepartment,
+    createLocation,
+    updateLocation,
+    deactivateLocation,
     getApprovalHierarchy,
     getStaffForSite,
     // Raw data for components that need it
     rawLeaveRequests: leaveRequests,
-    rawClockActivities: clockActivities
-  }),[user, isOnManager, leaveRequests, clockActivities, allUsers, activeOTPs])
+    rawClockActivities: clockActivities,
+    // Constants
+    LEAVE_TYPES
+  }),[user, isOnManager, leaveRequests, clockActivities, allUsers, locations, departments, activeOTPs])
   
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

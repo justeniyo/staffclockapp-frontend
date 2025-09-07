@@ -41,12 +41,19 @@ export default function AppNavbar({ onToggleMobile }) {
   return (
     <Navbar bg="warning" expand="lg" className="app-navbar px-3">
       <Container fluid className="p-0 d-flex align-items-center justify-content-between gap-2">
+        {/* Brand on the left */}
         <Navbar.Brand href="/" className="brand-big">StaffClock</Navbar.Brand>
 
+        {/* Right side elements - reordered so hamburger is last */}
         <div className="d-flex align-items-center gap-2 ms-auto">
           {/* Portal Button */}
           {showPortal && (
             <Button className="portal-btn d-none d-lg-inline" onClick={goPortal}>{portalLabel}</Button>
+          )}
+          
+          {/* Mobile Portal Button */}
+          {showPortal && (
+            <Button className="portal-btn d-lg-none" onClick={goPortal}>{portalLabel}</Button>
           )}
           
           {/* User Name Tag with Dropdown */}
@@ -75,7 +82,7 @@ export default function AppNavbar({ onToggleMobile }) {
             </div>
           )}
           
-          {/* Mobile Menu Toggle */}
+          {/* Mobile Menu Toggle - LAST ELEMENT */}
           <Button
             className="d-lg-none"
             variant="outline-dark"
@@ -84,11 +91,6 @@ export default function AppNavbar({ onToggleMobile }) {
           >
             ☰
           </Button>
-          
-          {/* Mobile Portal Button */}
-          {showPortal && (
-            <Button className="portal-btn d-lg-none" onClick={goPortal}>{portalLabel}</Button>
-          )}
         </div>
       </Container>
     </Navbar>

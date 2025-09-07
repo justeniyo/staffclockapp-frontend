@@ -84,7 +84,8 @@ export default function Sidebar({ variant='staff' }) {
         {/* Role Header */}
         <div className="sidebar-role">{getRoleDisplayName()}</div>
         
-        {/* Navigation Items - removed "Navigation" section title */}
+        {/* Navigation Section */}
+        <div className="sidebar-section-title">Navigation</div>
         {getNavigationItems()}
       </div>
     </div>

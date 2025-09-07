@@ -20,9 +20,10 @@ export default function VerifyAccount() {
 
     try {
       await verifyOTP(email, otp)
-      setSuccess('Account verified! Redirecting to login...')
+      setSuccess('Account verified! Redirecting to set your password...')
+      // Fixed: After verification, redirect to password reset instead of login
       setTimeout(() => {
-        navigate('/staff')
+        navigate(`/reset-password?email=${email}&verified=true`)
       }, 2000)
     } catch (err) {
       setError(err.message)
@@ -42,7 +43,7 @@ export default function VerifyAccount() {
 
     try {
       await resendOTP(email, 'verification')
-      setSuccess('New code sent!')
+      setSuccess('New verification code sent!')
       setTimeout(() => setSuccess(''), 3000)
     } catch (err) {
       setError(err.message)
@@ -61,6 +62,14 @@ export default function VerifyAccount() {
           <div className="login-title">
             <i className="fas fa-user-check me-2"></i>
             Verify Your Account
+          </div>
+          
+          <div className="alert alert-info mb-4">
+            <i className="fas fa-info-circle me-2"></i>
+            <strong>New User Setup:</strong>
+            <div className="small mt-1">
+              After verification, you'll be prompted to set your new password.
+            </div>
           </div>
           
           <form onSubmit={handleVerify}>
@@ -95,6 +104,7 @@ export default function VerifyAccount() {
                   className="btn btn-outline-warning"
                   onClick={handleResendOTP}
                   disabled={resendLoading || loading}
+                  title="Resend verification code"
                 >
                   {resendLoading ? (
                     <i className="fas fa-spinner fa-spin"></i>

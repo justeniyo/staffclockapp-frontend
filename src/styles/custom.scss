@@ -23,21 +23,47 @@ body { margin: 0; background: $body-bg; }
 .app-shell {
   height: 100vh;
   display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
-/* Sidebar */
+/* Fixed Navbar - spans full width */
+.navbar-fixed {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1030;
+  background: $brand-warning;
+}
+
+/* Main container under navbar */
+.main-container {
+  flex: 1;
+  display: flex;
+  margin-top: 56px; /* Height of navbar */
+  overflow: hidden;
+}
+
+/* Sidebar - starts under navbar */
 .sidebar-fixed {
   width: 264px;
   background: $dark;
   color: #fff;
   display: none;
   padding: 1rem;
+  overflow-y: auto;
+  height: 100%;
 }
+
 @media (min-width: 992px) {
   .sidebar-fixed {
     display: flex;
     flex-direction: column;
+  }
+  
+  .main-col {
+    margin-left: 0; /* Reset any margin */
   }
 }
 
@@ -116,16 +142,16 @@ body { margin: 0; background: $body-bg; }
   flex-shrink: 0;
 }
 
-/* Main column */
+/* Main column - takes remaining space */
 .main-col {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
 }
 
-/* Navbar */
+/* Navbar - updated for full width layout */
 .app-navbar {
   flex: 0 0 auto;
   padding-top: .35rem;
@@ -493,6 +519,7 @@ body { margin: 0; background: $body-bg; }
   background-color: rgba(255, 213, 77, .1);
 }
 
+/* Sticky table headers for admin staff management */
 .table-responsive {
   border-radius: .5rem;
   overflow-x: auto;
@@ -501,6 +528,14 @@ body { margin: 0; background: $body-bg; }
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
   scrollbar-color: rgba(155, 155, 155, 0.5) transparent;
+}
+
+.table-responsive .table thead th {
+  position: sticky;
+  top: 0;
+  background: #f8f9fa;
+  z-index: 1;
+  border-bottom: 2px solid #dee2e6;
 }
 
 .table-responsive::-webkit-scrollbar {

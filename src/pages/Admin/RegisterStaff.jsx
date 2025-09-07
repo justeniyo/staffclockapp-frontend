@@ -3,7 +3,15 @@ import { useAuth } from '../../context/AuthContext'
 import { getFullName, getUserById } from '../../config/seedUsers'
 
 export default function RegisterStaff() {
-  const { registerStaff, allUsers } = useAuth()
+  const { 
+    registerStaff, 
+    allUsers, 
+    departments, 
+    locations,
+    createDepartment,
+    createLocation
+  } = useAuth()
+  
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -13,12 +21,20 @@ export default function RegisterStaff() {
     jobTitle: '',
     role: 'staff',
     isManager: false,
-    managerId: ''
+    managerId: '',
+    assignedLocationId: ''
   })
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  
+  // Department and location management
+  const [showCreateDepartment, setShowCreateDepartment] = useState(false)
+  const [showCreateLocation, setShowCreateLocation] = useState(false)
+  const [newDepartment, setNewDepartment] = useState({ name: '', description: '' })
+  const [newLocation, setNewLocation] = useState({ name: '', address: '', type: 'office' })
 
-  const departments = ['IT', 'HR', 'Sales', 'Operations', 'Finance', 'Marketing', 'Administration', 'Security', 'Executive']
+  const departmentsList = Object.values(departments).filter(dept => dept.isActive)
+  const locationsList = Object.values(locations).filter(loc => loc.isActive)
   
   // Get potential managers based on hierarchy
   const getPotentialManagers = () => {
@@ -67,7 +83,7 @@ export default function RegisterStaff() {
 
   const potentialManagers = getPotentialManagers()
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
     
@@ -93,9 +109,13 @@ export default function RegisterStaff() {
       if (formData.role === 'security' && formData.isManager) {
         throw new Error('Security role cannot be a manager')
       }
+
+      if (!formData.assignedLocationId) {
+        throw new Error('Location assignment is required')
+      }
       
       const result = registerStaff(formData)
-      setSuccess(`Staff registered successfully! Email: ${formData.email} | Password: ${result.defaultPassword} | OTP: ${result.otp}`)
+      setSuccess(`Staff registered successfully! Email: ${formData.email} | Temporary Password: ${result.defaultPassword} | Verification OTP: ${result.otp}`)
       
       setFormData({
         firstName: '',
@@ -106,7 +126,8 @@ export default function RegisterStaff() {
         jobTitle: '',
         role: 'staff',
         isManager: false,
-        managerId: ''
+        managerId: '',
+        assignedLocationId: ''
       })
     } catch (err) {
       setError(err.message)
@@ -146,6 +167,56 @@ export default function RegisterStaff() {
     })
   }
 
+  const handleCreateDepartment = async (e) => {
+    e.preventDefault()
+    try {
+      if (!newDepartment.name.trim()) {
+        throw new Error('Department name is required')
+      }
+      
+      // Check if department already exists
+      const existingDept = departmentsList.find(dept => 
+        dept.name.toLowerCase() === newDepartment.name.toLowerCase()
+      )
+      if (existingDept) {
+        throw new Error('Department already exists')
+      }
+
+      const dept = await createDepartment(newDepartment)
+      setFormData(prev => ({ ...prev, department: dept.name }))
+      setNewDepartment({ name: '', description: '' })
+      setShowCreateDepartment(false)
+      alert('Department created successfully!')
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  const handleCreateLocation = async (e) => {
+    e.preventDefault()
+    try {
+      if (!newLocation.name.trim()) {
+        throw new Error('Location name is required')
+      }
+      
+      // Check if location already exists
+      const existingLoc = locationsList.find(loc => 
+        loc.name.toLowerCase() === newLocation.name.toLowerCase()
+      )
+      if (existingLoc) {
+        throw new Error('Location already exists')
+      }
+
+      const location = await createLocation(newLocation)
+      setFormData(prev => ({ ...prev, assignedLocationId: location.id }))
+      setNewLocation({ name: '', address: '', type: 'office' })
+      setShowCreateLocation(false)
+      alert('Location created successfully!')
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
   const getManagerDisplayName = (manager) => {
     const title = manager.jobTitle || manager.role.charAt(0).toUpperCase() + manager.role.slice(1)
     return `${getFullName(manager)} - ${title} (${manager.department})`
@@ -159,6 +230,11 @@ export default function RegisterStaff() {
       ceo: 'Chief Executive Officer - highest level in organization hierarchy'
     }
     return descriptions[role] || ''
+  }
+
+  // Helper to determine if staff-related fields should be shown
+  const showStaffFields = () => {
+    return formData.role === 'staff'
   }
 
   return (
@@ -241,7 +317,16 @@ export default function RegisterStaff() {
                       </small>
                     </div>
                     <div className="col-md-6">
-                      <label className="form-label">Department *</label>
+                      <label className="form-label">
+                        Department *
+                        <button 
+                          type="button" 
+                          className="btn btn-sm btn-outline-primary ms-2"
+                          onClick={() => setShowCreateDepartment(true)}
+                        >
+                          <i className="fas fa-plus"></i> New
+                        </button>
+                      </label>
                       <select 
                         className="form-select"
                         name="department"
@@ -250,8 +335,8 @@ export default function RegisterStaff() {
                         required
                       >
                         <option value="">Select Department</option>
-                        {departments.map(dept => (
-                          <option key={dept} value={dept}>{dept}</option>
+                        {departmentsList.map(dept => (
+                          <option key={dept.id} value={dept.name}>{dept.name}</option>
                         ))}
                       </select>
                     </div>
@@ -267,23 +352,49 @@ export default function RegisterStaff() {
                       />
                     </div>
                     <div className="col-md-6">
-                      <div className="form-check mt-4">
-                        <input 
-                          type="checkbox" 
-                          className="form-check-input"
-                          name="isManager"
-                          checked={formData.isManager}
-                          onChange={handleChange}
-                          disabled={formData.role === 'ceo' || formData.role === 'admin' || formData.role === 'security'}
-                        />
-                        <label className="form-check-label">
-                          Is Manager
-                          {formData.role === 'ceo' && <small className="text-muted ms-2">(CEO is always a manager)</small>}
-                          {(formData.role === 'admin' || formData.role === 'security') && 
-                            <small className="text-muted ms-2">({formData.role} cannot be manager)</small>}
-                        </label>
-                      </div>
+                      <label className="form-label">
+                        Location Assignment *
+                        <button 
+                          type="button" 
+                          className="btn btn-sm btn-outline-primary ms-2"
+                          onClick={() => setShowCreateLocation(true)}
+                        >
+                          <i className="fas fa-plus"></i> New
+                        </button>
+                      </label>
+                      <select 
+                        className="form-select"
+                        name="assignedLocationId"
+                        value={formData.assignedLocationId}
+                        onChange={handleChange}
+                        required
+                      >
+                        <option value="">Select Location</option>
+                        {locationsList.map(location => (
+                          <option key={location.id} value={location.id}>
+                            {location.name} ({location.type})
+                          </option>
+                        ))}
+                      </select>
                     </div>
+                    
+                    {/* Staff-specific fields - only show for staff role */}
+                    {showStaffFields() && (
+                      <div className="col-md-6">
+                        <div className="form-check mt-4">
+                          <input 
+                            type="checkbox" 
+                            className="form-check-input"
+                            name="isManager"
+                            checked={formData.isManager}
+                            onChange={handleChange}
+                          />
+                          <label className="form-check-label">
+                            Is Manager
+                          </label>
+                        </div>
+                      </div>
+                    )}
                     
                     {/* Manager Selection */}
                     {formData.role !== 'ceo' && (
@@ -390,6 +501,143 @@ export default function RegisterStaff() {
             </div>
           </div>
         </div>
+
+        {/* Create Department Modal */}
+        {showCreateDepartment && (
+          <div className="modal show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <div className="modal-dialog">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">
+                    <i className="fas fa-building me-2"></i>
+                    Create New Department
+                  </h5>
+                  <button 
+                    type="button" 
+                    className="btn-close"
+                    onClick={() => setShowCreateDepartment(false)}
+                  ></button>
+                </div>
+                <form onSubmit={handleCreateDepartment}>
+                  <div className="modal-body">
+                    <div className="mb-3">
+                      <label className="form-label">Department Name *</label>
+                      <input 
+                        type="text" 
+                        className="form-control"
+                        value={newDepartment.name}
+                        onChange={(e) => setNewDepartment(prev => ({...prev, name: e.target.value}))}
+                        required
+                        placeholder="e.g. Marketing, Legal, etc."
+                      />
+                    </div>
+                    <div className="mb-3">
+                      <label className="form-label">Description</label>
+                      <textarea 
+                        className="form-control"
+                        value={newDepartment.description}
+                        onChange={(e) => setNewDepartment(prev => ({...prev, description: e.target.value}))}
+                        rows="3"
+                        placeholder="Brief description of the department's role..."
+                      />
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <button 
+                      type="button" 
+                      className="btn btn-secondary"
+                      onClick={() => setShowCreateDepartment(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      type="submit" 
+                      className="btn btn-primary"
+                    >
+                      <i className="fas fa-plus me-1"></i>
+                      Create Department
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Create Location Modal */}
+        {showCreateLocation && (
+          <div className="modal show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <div className="modal-dialog">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">
+                    <i className="fas fa-map-marker-alt me-2"></i>
+                    Create New Location
+                  </h5>
+                  <button 
+                    type="button" 
+                    className="btn-close"
+                    onClick={() => setShowCreateLocation(false)}
+                  ></button>
+                </div>
+                <form onSubmit={handleCreateLocation}>
+                  <div className="modal-body">
+                    <div className="mb-3">
+                      <label className="form-label">Location Name *</label>
+                      <input 
+                        type="text" 
+                        className="form-control"
+                        value={newLocation.name}
+                        onChange={(e) => setNewLocation(prev => ({...prev, name: e.target.value}))}
+                        required
+                        placeholder="e.g. Branch Office, Warehouse 2, etc."
+                      />
+                    </div>
+                    <div className="mb-3">
+                      <label className="form-label">Address</label>
+                      <input 
+                        type="text" 
+                        className="form-control"
+                        value={newLocation.address}
+                        onChange={(e) => setNewLocation(prev => ({...prev, address: e.target.value}))}
+                        placeholder="Physical address or description"
+                      />
+                    </div>
+                    <div className="mb-3">
+                      <label className="form-label">Location Type</label>
+                      <select 
+                        className="form-select"
+                        value={newLocation.type}
+                        onChange={(e) => setNewLocation(prev => ({...prev, type: e.target.value}))}
+                      >
+                        <option value="office">Office</option>
+                        <option value="warehouse">Warehouse</option>
+                        <option value="remote">Remote</option>
+                        <option value="field">Field</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="modal-footer">
+                    <button 
+                      type="button" 
+                      className="btn btn-secondary"
+                      onClick={() => setShowCreateLocation(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      type="submit" 
+                      className="btn btn-primary"
+                    >
+                      <i className="fas fa-plus me-1"></i>
+                      Create Location
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

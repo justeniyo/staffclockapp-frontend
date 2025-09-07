@@ -3,12 +3,12 @@ import { useAuth } from '../../context/AuthContext'
 import { getFullName, getUserById } from '../../config/seedUsers'
 
 export default function ManageStaff(){
-  const { allUsers, updateStaff } = useAuth()
+  const { allUsers, updateStaff, deactivateUser, reactivateUser, locations, departments } = useAuth()
   const [filters, setFilters] = useState({
     search: '',
     department: '',
     role: '',
-    status: 'all',
+    status: 'active', // Default to active users only
     manager: ''
   })
   const [sortConfig, setSortConfig] = useState({
@@ -19,8 +19,11 @@ export default function ManageStaff(){
   const [itemsPerPage, setItemsPerPage] = useState(25)
   const [editingUser, setEditingUser] = useState(null)
   const [editForm, setEditForm] = useState({})
+  const [showDeactivateModal, setShowDeactivateModal] = useState(null)
+  const [deactivateReason, setDeactivateReason] = useState('')
 
-  const departments = [...new Set(Object.values(allUsers).map(user => user.department).filter(Boolean))]
+  const departmentsList = Object.values(departments).filter(dept => dept.isActive)
+  const locationsList = Object.values(locations).filter(loc => loc.isActive)
   const managers = Object.entries(allUsers).filter(([email, user]) => 
     user.isManager && user.isActive
   )
@@ -33,9 +36,10 @@ export default function ManageStaff(){
         ...user, 
         email, 
         staffName: getFullName(user),
-        managerName: user.managerId ? getFullName(getUserById(user.managerId)) : 'None'
+        managerName: user.managerId ? getFullName(getUserById(user.managerId)) : 'None',
+        locationName: user.assignedLocationId ? locations[user.assignedLocationId]?.name : 'Unknown'
       }))
-  }, [allUsers])
+  }, [allUsers, locations])
 
   // Advanced filtering and sorting
   const filteredAndSortedStaff = useMemo(() => {
@@ -62,6 +66,7 @@ export default function ManageStaff(){
       filtered = filtered.filter(user => user.managerId === filters.manager)
     }
 
+    // Updated status filtering
     if (filters.status !== 'all') {
       if (filters.status === 'verified') {
         filtered = filtered.filter(user => user.verified === true)
@@ -71,7 +76,7 @@ export default function ManageStaff(){
         filtered = filtered.filter(user => user.isActive === true)
       } else if (filters.status === 'inactive') {
         filtered = filtered.filter(user => user.isActive === false)
-      } else if (filters.status === 'clocked_in') {
+      } else if (filters.status === 'on_duty') {
         filtered = filtered.filter(user => user.isClockedIn === true)
       } else if (filters.status === 'managers') {
         filtered = filtered.filter(user => user.isManager === true)
@@ -136,7 +141,8 @@ export default function ManageStaff(){
       isManager: user.isManager,
       managerId: user.managerId || '',
       isActive: user.isActive,
-      verified: user.verified
+      verified: user.verified,
+      assignedLocationId: user.assignedLocationId || ''
     })
   }
 
@@ -169,12 +175,39 @@ export default function ManageStaff(){
     setEditForm({})
   }
 
+  const handleDeactivateUser = async () => {
+    if (!deactivateReason.trim()) {
+      alert('Please provide a reason for deactivation')
+      return
+    }
+
+    try {
+      await deactivateUser(showDeactivateModal.email, deactivateReason)
+      setShowDeactivateModal(null)
+      setDeactivateReason('')
+      alert('User deactivated successfully')
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  const handleReactivateUser = async (email) => {
+    if (window.confirm('Are you sure you want to reactivate this user?')) {
+      try {
+        await reactivateUser(email)
+        alert('User reactivated successfully')
+      } catch (err) {
+        alert(err.message)
+      }
+    }
+  }
+
   const clearFilters = () => {
     setFilters({
       search: '',
       department: '',
       role: '',
-      status: 'all',
+      status: 'active', // Reset to default active filter
       manager: ''
     })
     setCurrentPage(1)
@@ -193,13 +226,6 @@ export default function ManageStaff(){
   const getSortIcon = (key) => {
     if (sortConfig.key !== key) return 'fas fa-sort text-muted'
     return sortConfig.direction === 'asc' ? 'fas fa-sort-up text-primary' : 'fas fa-sort-down text-primary'
-  }
-
-  const getStatusIcon = (user) => {
-    if (!user.isActive) return { icon: 'fa-user-slash', color: 'text-danger', text: 'Inactive' }
-    if (!user.verified) return { icon: 'fa-user-clock', color: 'text-warning', text: 'Unverified' }
-    if (user.isClockedIn) return { icon: 'fa-user-check', color: 'text-success', text: 'Active' }
-    return { icon: 'fa-user', color: 'text-secondary', text: 'Offline' }
   }
 
   // Get potential managers for editing
@@ -238,9 +264,10 @@ export default function ManageStaff(){
     return {
       total: usersArray.length,
       active: usersArray.filter(u => u.isActive).length,
+      inactive: usersArray.filter(u => !u.isActive).length,
       managers: usersArray.filter(u => u.isManager).length,
       unverified: usersArray.filter(u => !u.verified).length,
-      clockedIn: usersArray.filter(u => u.isClockedIn).length
+      onDuty: usersArray.filter(u => u.isClockedIn).length
     }
   }, [usersArray])
 
@@ -277,6 +304,14 @@ export default function ManageStaff(){
           <div className="col-md-2">
             <div className="card text-center">
               <div className="card-body">
+                <h4 className="text-danger">{stats.inactive}</h4>
+                <p className="mb-0 small">Inactive</p>
+              </div>
+            </div>
+          </div>
+          <div className="col-md-2">
+            <div className="card text-center">
+              <div className="card-body">
                 <h4 className="text-info">{stats.managers}</h4>
                 <p className="mb-0 small">Managers</p>
               </div>
@@ -293,8 +328,8 @@ export default function ManageStaff(){
           <div className="col-md-2">
             <div className="card text-center">
               <div className="card-body">
-                <h4 className="text-secondary">{stats.clockedIn}</h4>
-                <p className="mb-0 small">Clocked In</p>
+                <h4 className="text-secondary">{stats.onDuty}</h4>
+                <p className="mb-0 small">On Duty</p>
               </div>
             </div>
           </div>
@@ -337,8 +372,8 @@ export default function ManageStaff(){
                   onChange={(e) => handleFilterChange({...filters, department: e.target.value})}
                 >
                   <option value="">All Departments</option>
-                  {departments.map(dept => (
-                    <option key={dept} value={dept}>{dept}</option>
+                  {departmentsList.map(dept => (
+                    <option key={dept.id} value={dept.name}>{dept.name}</option>
                   ))}
                 </select>
               </div>
@@ -379,11 +414,11 @@ export default function ManageStaff(){
                   onChange={(e) => handleFilterChange({...filters, status: e.target.value})}
                 >
                   <option value="all">All Status</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
+                  <option value="active">Active Users</option>
+                  <option value="inactive">Inactive Users</option>
                   <option value="verified">Verified</option>
                   <option value="unverified">Unverified</option>
-                  <option value="clocked_in">Currently Clocked In</option>
+                  <option value="on_duty">On Duty</option>
                   <option value="managers">Managers Only</option>
                 </select>
               </div>
@@ -540,8 +575,8 @@ export default function ManageStaff(){
                                 onChange={(e) => setEditForm(prev => ({...prev, department: e.target.value}))}
                               >
                                 <option value="">Select Department</option>
-                                {departments.map(dept => (
-                                  <option key={dept} value={dept}>{dept}</option>
+                                {departmentsList.map(dept => (
+                                  <option key={dept.id} value={dept.name}>{dept.name}</option>
                                 ))}
                               </select>
                             ) : (
@@ -606,17 +641,10 @@ export default function ManageStaff(){
                           </td>
                           <td>
                             <div className="d-flex flex-column gap-1">
-                              {(() => {
-                                const status = getStatusIcon(user)
-                                return (
-                                  <span className={`small ${status.color}`}>
-                                    <i className={`fas ${status.icon} me-1`}></i>
-                                    {status.text}
-                                  </span>
-                                )
-                              })()}
-                              {!user.verified && <span className="badge bg-warning text-dark">Unverified</span>}
+                              {/* Only show inactive badge for inactive users */}
                               {!user.isActive && <span className="badge bg-danger">Inactive</span>}
+                              {!user.verified && <span className="badge bg-warning text-dark">Unverified</span>}
+                              {user.isClockedIn && user.isActive && <span className="badge bg-success">On Duty</span>}
                             </div>
                           </td>
                           <td>
@@ -630,13 +658,33 @@ export default function ManageStaff(){
                                 </button>
                               </div>
                             ) : (
-                              <button 
-                                className="btn btn-outline-primary btn-sm"
-                                onClick={() => startEdit(user)}
-                              >
-                                <i className="fas fa-edit me-1"></i>
-                                Edit
-                              </button>
+                              <div className="btn-group btn-group-sm">
+                                <button 
+                                  className="btn btn-outline-primary"
+                                  onClick={() => startEdit(user)}
+                                >
+                                  <i className="fas fa-edit"></i>
+                                </button>
+                                {user.role !== 'ceo' && (
+                                  user.isActive ? (
+                                    <button 
+                                      className="btn btn-outline-danger"
+                                      onClick={() => setShowDeactivateModal(user)}
+                                      title="Deactivate User"
+                                    >
+                                      <i className="fas fa-ban"></i>
+                                    </button>
+                                  ) : (
+                                    <button 
+                                      className="btn btn-outline-success"
+                                      onClick={() => handleReactivateUser(user.email)}
+                                      title="Reactivate User"
+                                    >
+                                      <i className="fas fa-user-check"></i>
+                                    </button>
+                                  )
+                                )}
+                              </div>
                             )}
                           </td>
                         </tr>
@@ -723,6 +771,64 @@ export default function ManageStaff(){
             )}
           </div>
         </div>
+
+        {/* Deactivate User Modal */}
+        {showDeactivateModal && (
+          <div className="modal show" style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+            <div className="modal-dialog">
+              <div className="modal-content">
+                <div className="modal-header">
+                  <h5 className="modal-title">
+                    <i className="fas fa-exclamation-triangle text-warning me-2"></i>
+                    Deactivate User
+                  </h5>
+                  <button 
+                    type="button" 
+                    className="btn-close"
+                    onClick={() => setShowDeactivateModal(null)}
+                  ></button>
+                </div>
+                <div className="modal-body">
+                  <div className="alert alert-warning">
+                    <strong>Warning:</strong> This action will deactivate the user account for{' '}
+                    <strong>{getFullName(showDeactivateModal)}</strong>.
+                    The user will no longer be able to log in or access the system.
+                  </div>
+                  
+                  <div className="mb-3">
+                    <label className="form-label">Reason for Deactivation *</label>
+                    <textarea 
+                      className="form-control"
+                      value={deactivateReason}
+                      onChange={(e) => setDeactivateReason(e.target.value)}
+                      rows="3"
+                      placeholder="Please provide a reason for deactivating this user..."
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary"
+                    onClick={() => setShowDeactivateModal(null)}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="button" 
+                    className="btn btn-danger"
+                    onClick={handleDeactivateUser}
+                    disabled={!deactivateReason.trim()}
+                  >
+                    <i className="fas fa-ban me-1"></i>
+                    Deactivate User
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

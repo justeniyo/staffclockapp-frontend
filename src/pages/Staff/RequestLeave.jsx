@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useAuth } from '../../context/AuthContext'
 
 export default function RequestLeave() {
-  const { submitLeaveRequest, updateLeaveRequest, rawLeaveRequests, user } = useAuth()
+  const { submitLeaveRequest, updateLeaveRequest, rawLeaveRequests, user, LEAVE_TYPES } = useAuth()
   const [formData, setFormData] = useState({
     type: 'Annual',
     startDate: '',
@@ -206,7 +206,6 @@ export default function RequestLeave() {
     const descriptions = {
       Annual: `Annual Leave (${annualLeaveStats.remaining} days remaining)`,
       Sick: 'Sick Leave (Reason required)',
-      Personal: 'Personal Leave', 
       Emergency: 'Emergency Leave (Reason required)'
     }
     return descriptions[type] || type
@@ -223,11 +222,6 @@ export default function RequestLeave() {
         icon: 'fa-thermometer-half', 
         color: 'text-danger',
         description: 'Medical leave with reason'
-      },
-      Personal: { 
-        icon: 'fa-user', 
-        color: 'text-info',
-        description: 'Personal time off'
       },
       Emergency: { 
         icon: 'fa-exclamation-triangle', 
@@ -324,10 +318,11 @@ export default function RequestLeave() {
                       onChange={handleChange}
                       required
                     >
-                      <option value="Annual">{getLeaveTypeDescription('Annual')}</option>
-                      <option value="Sick">{getLeaveTypeDescription('Sick')}</option>
-                      <option value="Personal">{getLeaveTypeDescription('Personal')}</option>
-                      <option value="Emergency">{getLeaveTypeDescription('Emergency')}</option>
+                      {LEAVE_TYPES.map(type => (
+                        <option key={type} value={type}>
+                          {getLeaveTypeDescription(type)}
+                        </option>
+                      ))}
                     </select>
                     
                     {/* Type information */}
@@ -472,10 +467,11 @@ export default function RequestLeave() {
                                   value={editForm.type}
                                   onChange={handleEditChange}
                                 >
-                                  <option value="Annual">{getLeaveTypeDescription('Annual')}</option>
-                                  <option value="Sick">{getLeaveTypeDescription('Sick')}</option>
-                                  <option value="Personal">{getLeaveTypeDescription('Personal')}</option>
-                                  <option value="Emergency">{getLeaveTypeDescription('Emergency')}</option>
+                                  {LEAVE_TYPES.map(type => (
+                                    <option key={type} value={type}>
+                                      {getLeaveTypeDescription(type)}
+                                    </option>
+                                  ))}
                                 </select>
                               </div>
                               <div className="col-md-6">
