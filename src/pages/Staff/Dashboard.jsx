@@ -11,21 +11,21 @@ export default function StaffDashboard() {
     const myRequests = rawLeaveRequests.filter(req => req.staffId === user.id)
     const myActivities = clockActivities.filter(activity => activity.staffId === user.id).slice(0, 5)
     const pendingRequests = myRequests.filter(req => req.status === 'pending').length
-    
+
     // Calculate annual leave usage
     const currentYear = new Date().getFullYear()
     const annualLeaveThisYear = myRequests.filter(req => {
       const reqYear = new Date(req.startDate).getFullYear()
-      return req.type === 'Annual' && 
-             reqYear === currentYear && 
-             (req.status === 'approved' || req.status === 'pending')
+      return req.type === 'Annual' &&
+        reqYear === currentYear &&
+        (req.status === 'approved' || req.status === 'pending')
     })
-    
+
     const annualDaysUsed = annualLeaveThisYear.reduce((total, req) => {
       const days = Math.ceil((new Date(req.endDate) - new Date(req.startDate)) / (1000 * 60 * 60 * 24)) + 1
       return total + days
     }, 0)
-    
+
     return {
       requests: myRequests,
       activities: myActivities,
@@ -210,7 +210,7 @@ export default function StaffDashboard() {
                             {new Date(activity.timestamp).toLocaleDateString()}
                           </div>
                           <small className="text-muted">
-                            {new Date(activity.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                            {new Date(activity.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </small>
                         </div>
                       </div>
@@ -255,7 +255,15 @@ export default function StaffDashboard() {
                         <div className="d-flex align-items-center">
                           <i className={`fas ${getLeaveTypeIcon(req.type)} me-3 text-primary`}></i>
                           <div>
-                            <div className="fw-semibold">{req.type} Leave</div>
+                            <div className="fw-semibold d-flex align-items-center">
+                              {req.type} Leave
+                              {req.isAutoApproved && (
+                                <span className="badge bg-warning text-dark ms-2 small">
+                                  <i className="fas fa-crown me-1"></i>
+                                  Auto
+                                </span>
+                              )}
+                            </div>
                             <small className="text-muted">
                               {req.startDate} to {req.endDate}
                             </small>
@@ -294,10 +302,10 @@ export default function StaffDashboard() {
               <div className="card-body">
                 <div className="row align-items-center">
                   <div className="col-md-8">
-                    <div className="progress mb-2" style={{height: '20px'}}>
-                      <div 
+                    <div className="progress mb-2" style={{ height: '20px' }}>
+                      <div
                         className={`progress-bar ${myData.annualDaysUsed > 15 ? 'bg-danger' : myData.annualDaysUsed > 12 ? 'bg-warning' : 'bg-success'}`}
-                        style={{width: `${Math.min((myData.annualDaysUsed / 18) * 100, 100)}%`}}
+                        style={{ width: `${Math.min((myData.annualDaysUsed / 18) * 100, 100)}%` }}
                       >
                         {myData.annualDaysUsed} / 18 days
                       </div>
@@ -325,7 +333,7 @@ export default function StaffDashboard() {
                 {myData.annualDaysRemaining <= 3 && (
                   <div className={`alert ${myData.annualDaysRemaining === 0 ? 'alert-danger' : 'alert-warning'} mt-3 mb-0`}>
                     <i className="fas fa-exclamation-triangle me-2"></i>
-                    {myData.annualDaysRemaining === 0 
+                    {myData.annualDaysRemaining === 0
                       ? 'You have used all your annual leave for this year.'
                       : `You only have ${myData.annualDaysRemaining} annual leave days remaining for this year.`
                     }

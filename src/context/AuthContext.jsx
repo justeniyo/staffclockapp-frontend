@@ -1,8 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { 
-  seedUsers, 
-  seedLeaveRequests, 
+import {
+  seedUsers,
+  seedLeaveRequests,
   seedClockActivities,
   seedLocations,
   seedDepartments,
@@ -21,80 +21,80 @@ const AuthContext = createContext()
 export function AuthProvider({ children }) {
   const navigate = useNavigate()
   const location = useLocation()
-  
-  const [user, setUser] = useState(()=>{
+
+  const [user, setUser] = useState(() => {
     const saved = localStorage.getItem('sc_user')
     return saved ? JSON.parse(saved) : null
   })
 
-  const [leaveRequests, setLeaveRequests] = useState(()=>{
+  const [leaveRequests, setLeaveRequests] = useState(() => {
     const saved = localStorage.getItem('sc_leave_requests')
     return saved ? JSON.parse(saved) : seedLeaveRequests
   })
 
-  const [clockActivities, setClockActivities] = useState(()=>{
+  const [clockActivities, setClockActivities] = useState(() => {
     const saved = localStorage.getItem('sc_clock_activities')
     return saved ? JSON.parse(saved) : seedClockActivities
   })
 
-  const [allUsers, setAllUsers] = useState(()=>{
+  const [allUsers, setAllUsers] = useState(() => {
     const saved = localStorage.getItem('sc_all_users')
     return saved ? JSON.parse(saved) : seedUsers
   })
 
-  const [locations, setLocations] = useState(()=>{
+  const [locations, setLocations] = useState(() => {
     const saved = localStorage.getItem('sc_locations')
     return saved ? JSON.parse(saved) : seedLocations
   })
 
-  const [departments, setDepartments] = useState(()=>{
+  const [departments, setDepartments] = useState(() => {
     const saved = localStorage.getItem('sc_departments')
     return saved ? JSON.parse(saved) : seedDepartments
   })
 
   // Filter state persistence
-  const [filterStates, setFilterStates] = useState(()=>{
+  const [filterStates, setFilterStates] = useState(() => {
     const saved = localStorage.getItem('sc_filter_states')
     return saved ? JSON.parse(saved) : {}
   })
 
   // OTP storage for both verification and password reset
-  const [activeOTPs, setActiveOTPs] = useState(()=>{
+  const [activeOTPs, setActiveOTPs] = useState(() => {
     const saved = localStorage.getItem('sc_active_otps')
     return saved ? JSON.parse(saved) : {}
   })
 
   // Save to localStorage on changes
-  useEffect(()=>{
+  useEffect(() => {
     if (user) localStorage.setItem('sc_user', JSON.stringify(user))
     else localStorage.removeItem('sc_user')
   }, [user])
 
-  useEffect(()=>{
+  useEffect(() => {
     localStorage.setItem('sc_leave_requests', JSON.stringify(leaveRequests))
   }, [leaveRequests])
 
-  useEffect(()=>{
+  useEffect(() => {
     localStorage.setItem('sc_clock_activities', JSON.stringify(clockActivities))
   }, [clockActivities])
 
-  useEffect(()=>{
+  useEffect(() => {
     localStorage.setItem('sc_all_users', JSON.stringify(allUsers))
   }, [allUsers])
 
-  useEffect(()=>{
+  useEffect(() => {
     localStorage.setItem('sc_locations', JSON.stringify(locations))
   }, [locations])
 
-  useEffect(()=>{
+  useEffect(() => {
     localStorage.setItem('sc_departments', JSON.stringify(departments))
   }, [departments])
 
-  useEffect(()=>{
+  useEffect(() => {
     localStorage.setItem('sc_active_otps', JSON.stringify(activeOTPs))
   }, [activeOTPs])
 
-  useEffect(()=>{
+  useEffect(() => {
     localStorage.setItem('sc_filter_states', JSON.stringify(filterStates))
   }, [filterStates])
 
@@ -126,7 +126,7 @@ export function AuthProvider({ children }) {
       generateOTP(email, 'verification')
       throw new Error(`Account not verified. OTP sent to ${email}.||verify-account?email=${email}`)
     }
-    
+
     // FIXED: Handle CEO and role validation properly
     if (roleHint) {
       if (roleHint === 'ceo') {
@@ -146,15 +146,15 @@ export function AuthProvider({ children }) {
         }
       }
     }
-    
+
     const u = { ...record, email }
     setUser(u)
-    
+
     apiCall('/api/auth/login', {
       method: 'POST',
       body: { email, password, roleHint }
     })
-    
+
     // FIXED: CEO login redirects to CEO dashboard, but they can access staff/manager portals
     if (isCEO(u)) navigate('/ceo-dashboard', { replace: true })
     else if (u.role === 'staff') navigate('/clock', { replace: true })
@@ -162,7 +162,7 @@ export function AuthProvider({ children }) {
     else if (u.role === 'security') navigate('/security-dashboard', { replace: true })
   }
 
-  const logout = () => { 
+  const logout = () => {
     setUser(null)
     apiCall('/api/auth/logout', { method: 'POST' })
     navigate('/staff', { replace: true })
@@ -172,7 +172,7 @@ export function AuthProvider({ children }) {
   const generateOTP = (email, type) => {
     const otp = Math.floor(100000 + Math.random() * 900000).toString()
     const expires = Date.now() + 300000 // 5 minutes from now
-    
+
     setActiveOTPs(prev => ({
       ...prev,
       [email]: {
@@ -209,7 +209,7 @@ export function AuthProvider({ children }) {
 
   const resetPassword = async (email, otp, newPassword) => {
     const otpData = activeOTPs[email]
-    
+
     if (!otpData || otpData.type !== 'password_reset') {
       throw new Error('No password reset request found for this email')
     }
@@ -263,12 +263,12 @@ export function AuthProvider({ children }) {
   const verifyOTP = (email, otp) => {
     const otpData = activeOTPs[email]
     const user = allUsers[email]
-    
+
     console.log('Verifying OTP:', { email, providedOTP: otp, storedData: otpData, currentTime: Date.now() })
-    
+
     if (!otpData) throw new Error('No verification code found for this email')
     if (!user) throw new Error('No account found for this email')
-    
+
     // FIXED: Proper string comparison and debugging
     if (otpData.otp.toString() !== otp.toString()) {
       setActiveOTPs(prev => ({
@@ -278,28 +278,28 @@ export function AuthProvider({ children }) {
       console.log('OTP mismatch:', { provided: otp, expected: otpData.otp })
       throw new Error('Invalid verification code')
     }
-    
+
     if (Date.now() > otpData.expires) {
       console.log('OTP expired:', { currentTime: Date.now(), expires: otpData.expires })
       throw new Error('Verification code has expired')
     }
-    
+
     setAllUsers(prev => ({
       ...prev,
       [email]: { ...prev[email], verified: true }
     }))
-    
+
     setActiveOTPs(prev => {
       const updated = { ...prev }
       delete updated[email]
       return updated
     })
-    
+
     apiCall('/api/auth/verify-otp', {
       method: 'POST',
       body: { email, otp }
     })
-    
+
     return true
   }
 
@@ -307,30 +307,30 @@ export function AuthProvider({ children }) {
   const clockIn = (locationId = null) => {
     const selectedLocationId = locationId || user.assignedLocationId || 'loc_001'
     const selectedLocation = getLocationById(selectedLocationId)
-    
+
     const activity = {
       id: `ca_${Date.now()}`,
       staffId: user.id,
-      action: 'clock_in', 
+      action: 'clock_in',
       timestamp: new Date().toISOString(),
       locationId: selectedLocationId,
       location: selectedLocation?.name || 'Unknown Location'
     }
-    
+
     setClockActivities(prev => [activity, ...prev])
-    
+
     // FIXED: Start with selected location only
-    setUser(prev => ({ 
-      ...prev, 
-      isClockedIn: true, 
+    setUser(prev => ({
+      ...prev,
+      isClockedIn: true,
       currentLocationIds: [selectedLocationId] // Start with one location
     }))
-    
+
     setAllUsers(prev => ({
       ...prev,
-      [user.email]: { 
-        ...prev[user.email], 
-        isClockedIn: true, 
+      [user.email]: {
+        ...prev[user.email],
+        isClockedIn: true,
         currentLocationIds: [selectedLocationId]
       }
     }))
@@ -344,7 +344,7 @@ export function AuthProvider({ children }) {
   const clockOut = () => {
     // Clock out from all locations
     const currentLocations = user.currentLocationIds || []
-    
+
     // Create clock out activities for all current locations
     const activities = currentLocations.map((locationId, index) => {
       const location = getLocationById(locationId)
@@ -357,21 +357,21 @@ export function AuthProvider({ children }) {
         location: location?.name || 'Unknown Location'
       }
     })
-    
+
     setClockActivities(prev => [...activities, ...prev])
-    
-    setUser(prev => ({ 
-      ...prev, 
-      isClockedIn: false, 
-      currentLocationIds: [] 
+
+    setUser(prev => ({
+      ...prev,
+      isClockedIn: false,
+      currentLocationIds: []
     }))
-    
+
     setAllUsers(prev => ({
       ...prev,
-      [user.email]: { 
-        ...prev[user.email], 
-        isClockedIn: false, 
-        currentLocationIds: [] 
+      [user.email]: {
+        ...prev[user.email],
+        isClockedIn: false,
+        currentLocationIds: []
       }
     }))
 
@@ -396,10 +396,10 @@ export function AuthProvider({ children }) {
     // Remove from previous location and add to new location
     const previousLocation = currentLocations[0] // Get current location
     const newLocation = getLocationById(locationId)
-    
+
     // Create activities for location change
     const activities = []
-    
+
     if (previousLocation) {
       const prevLoc = getLocationById(previousLocation)
       activities.push({
@@ -411,7 +411,7 @@ export function AuthProvider({ children }) {
         location: prevLoc?.name || 'Unknown Location'
       })
     }
-    
+
     activities.push({
       id: `ca_${Date.now() + 1}`,
       staffId: user.id,
@@ -422,11 +422,11 @@ export function AuthProvider({ children }) {
     })
 
     setClockActivities(prev => [...activities, ...prev])
-    
+
     // FIXED: Set current location to only the new location
     const newLocationIds = [locationId] // Only one location at a time
     setUser(prev => ({ ...prev, currentLocationIds: newLocationIds }))
-    
+
     setAllUsers(prev => ({
       ...prev,
       [user.email]: { ...prev[user.email], currentLocationIds: newLocationIds }
@@ -459,8 +459,8 @@ export function AuthProvider({ children }) {
 
   const submitLeaveRequest = (requestData) => {
     const userRecord = allUsers[user.email]
-    const manager = userRecord.managerId ? getUserById(userRecord.managerId) : null
-    
+    const isCEOUser = isCEO(userRecord)
+
     const newRequest = {
       id: `lr_${Date.now()}`,
       staffId: user.id,
@@ -468,13 +468,14 @@ export function AuthProvider({ children }) {
       startDate: requestData.startDate,
       endDate: requestData.endDate,
       reason: (requestData.type === 'Emergency' || requestData.type === 'Sick') ? requestData.reason : null,
-      status: 'pending',
+      status: isCEOUser ? 'approved' : 'pending',
       requestDate: new Date().toISOString(),
-      processedBy: null,
-      processedDate: null,
-      processingNotes: null
+      processedBy: isCEOUser ? 'system_ceo_auto' : null,
+      processedDate: isCEOUser ? new Date().toISOString() : null,
+      processingNotes: isCEOUser ? 'Automatically approved - CEO Executive Privilege' : null,
+      isAutoApproved: isCEOUser // Flag to track auto-approval
     }
-    
+
     setLeaveRequests(prev => [newRequest, ...prev])
 
     apiCall('/api/leave-requests', {
@@ -482,45 +483,58 @@ export function AuthProvider({ children }) {
       body: newRequest
     })
 
+    console.log(`${isCEOUser ? 'CEO auto-approved' : 'Regular'} leave request:`, newRequest)
     return newRequest
   }
 
   const updateLeaveRequest = (requestId, updatedData) => {
-    setLeaveRequests(prev => prev.map(req => 
-      req.id === requestId 
-        ? { 
-            ...req, 
-            ...updatedData,
-            status: 'pending',
-            processedBy: null,
-            processedDate: null,
-            processingNotes: null
-          }
-        : req
+    const existingRequest = rawLeaveRequests.find(req => req.id === requestId)
+    const userRecord = allUsers[user.email]
+    const isCEOUser = isCEO(userRecord)
+
+    // If CEO is updating their own request, keep it auto-approved
+    const updatedRequest = {
+      ...existingRequest,
+      ...updatedData,
+      // CEO requests remain approved when edited
+      status: isCEOUser ? 'approved' : 'pending',
+      processedBy: isCEOUser ? 'system_ceo_auto' : null,
+      processedDate: isCEOUser ? new Date().toISOString() : null,
+      processingNotes: isCEOUser ? 'Automatically approved - CEO Executive Privilege (Updated)' : null,
+      isAutoApproved: isCEOUser,
+      lastModified: new Date().toISOString()
+    }
+
+    setLeaveRequests(prev => prev.map(req =>
+      req.id === requestId ? updatedRequest : req
     ))
 
     apiCall(`/api/leave-requests/${requestId}`, {
       method: 'PUT',
-      body: updatedData
+      body: updatedRequest
     })
+
+    if (isCEOUser) {
+      console.log('CEO request updated and remains auto-approved:', updatedRequest)
+    }
   }
 
   const processLeaveRequest = (requestId, status, notes = null) => {
     const request = leaveRequests.find(req => req.id === requestId)
-    
+
     if (status === 'rejected' && !notes?.trim()) {
       throw new Error('Rejection reason is required')
     }
-    
-    setLeaveRequests(prev => prev.map(req => 
-      req.id === requestId 
-        ? { 
-            ...req, 
-            status,
-            processedBy: user.id,
-            processedDate: new Date().toISOString(),
-            processingNotes: (request?.type === 'Emergency' || request?.type === 'Sick' || status === 'rejected') ? notes : null
-          }
+
+    setLeaveRequests(prev => prev.map(req =>
+      req.id === requestId
+        ? {
+          ...req,
+          status,
+          processedBy: user.id,
+          processedDate: new Date().toISOString(),
+          processingNotes: (request?.type === 'Emergency' || request?.type === 'Sick' || status === 'rejected') ? notes : null
+        }
         : req
     ))
 
@@ -533,7 +547,7 @@ export function AuthProvider({ children }) {
   const registerStaff = (staffData) => {
     const email = staffData.email
     const defaultPassword = 'temp123'
-    
+
     const newUser = {
       id: `usr_${Date.now()}`,
       email: email,
@@ -556,19 +570,19 @@ export function AuthProvider({ children }) {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     }
-    
+
     setAllUsers(prev => ({
       ...prev,
       [email]: newUser
     }))
-    
+
     const result = generateOTP(email, 'verification')
 
     apiCall('/api/admin/register-staff', {
       method: 'POST',
       body: newUser
     })
-    
+
     console.log(`Staff registered: ${email}`)
     console.log(`Temporary password: ${defaultPassword}`)
     console.log(`User must verify account then set new password`)
@@ -578,8 +592,8 @@ export function AuthProvider({ children }) {
   const updateStaff = (email, updates) => {
     setAllUsers(prev => ({
       ...prev,
-      [email]: { 
-        ...prev[email], 
+      [email]: {
+        ...prev[email],
         ...updates,
         updatedAt: new Date().toISOString()
       }
@@ -597,17 +611,17 @@ export function AuthProvider({ children }) {
   const deactivateUser = async (email, reason = '', replacementCeoEmail = null) => {
     const userToDeactivate = allUsers[email]
     if (!userToDeactivate) throw new Error('User not found')
-    
+
     if (isCEO(userToDeactivate)) {
       if (!replacementCeoEmail) {
         throw new Error('Must appoint a replacement CEO before deactivating current CEO')
       }
-      
+
       const replacementUser = allUsers[replacementCeoEmail]
       if (!replacementUser) {
         throw new Error('Replacement CEO not found')
       }
-      
+
       if (!replacementUser.isActive) {
         throw new Error('Replacement CEO must be an active user')
       }
@@ -624,11 +638,11 @@ export function AuthProvider({ children }) {
         }
       }))
     }
-    
+
     setAllUsers(prev => ({
       ...prev,
-      [email]: { 
-        ...prev[email], 
+      [email]: {
+        ...prev[email],
         isActive: false,
         deactivatedAt: new Date().toISOString(),
         deactivationReason: reason,
@@ -647,11 +661,11 @@ export function AuthProvider({ children }) {
   const reactivateUser = async (email) => {
     const user = allUsers[email]
     if (!user) throw new Error('User not found')
-    
+
     setAllUsers(prev => ({
       ...prev,
-      [email]: { 
-        ...prev[email], 
+      [email]: {
+        ...prev[email],
         isActive: true,
         reactivatedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -710,7 +724,7 @@ export function AuthProvider({ children }) {
     const dept = departments[deptId]
     if (!dept) throw new Error('Department not found')
 
-    const activeUsersInDept = Object.values(allUsers).filter(user => 
+    const activeUsersInDept = Object.values(allUsers).filter(user =>
       user.department === dept.name && user.isActive
     )
 
@@ -781,7 +795,7 @@ export function AuthProvider({ children }) {
     const location = locations[locationId]
     if (!location) throw new Error('Location not found')
 
-    const activeUsersInLocation = Object.values(allUsers).filter(user => 
+    const activeUsersInLocation = Object.values(allUsers).filter(user =>
       user.assignedLocationId === locationId && user.isActive
     )
 
@@ -811,7 +825,7 @@ export function AuthProvider({ children }) {
     return leaveRequests.map(request => {
       const staff = getUserById(request.staffId)
       const processor = request.processedBy ? getUserById(request.processedBy) : null
-      
+
       return {
         ...request,
         staffName: staff ? getFullName(staff) : 'Unknown Staff',
@@ -828,7 +842,7 @@ export function AuthProvider({ children }) {
     return clockActivities.map(activity => {
       const staff = getUserById(activity.staffId)
       const location = getLocationById(activity.locationId)
-      
+
       return {
         ...activity,
         staffName: staff ? getFullName(staff) : 'Unknown Staff',
@@ -841,12 +855,12 @@ export function AuthProvider({ children }) {
 
   const getStaffForSite = (locationId) => {
     if (user?.role !== 'security') return []
-    
+
     if (user.assignedLocationId !== locationId) return []
-    
-    return Object.values(allUsers).filter(staff => 
-      staff.role === 'staff' && 
-      staff.isActive && 
+
+    return Object.values(allUsers).filter(staff =>
+      staff.role === 'staff' &&
+      staff.isActive &&
       staff.isClockedIn &&
       staff.assignedLocationId === locationId
     )
@@ -854,15 +868,15 @@ export function AuthProvider({ children }) {
 
   const isOnManager = location.pathname.startsWith('/manager')
 
-  const value = useMemo(()=>({ 
-    user, 
-    login, 
-    logout, 
+  const value = useMemo(() => ({
+    user,
+    login,
+    logout,
     forgotPassword,
     resetPassword,
     resendOTP,
     verifyOTP,
-    clockIn, 
+    clockIn,
     clockOut,
     addLocation, // FIXED: Change location function
     removeLocation, // FIXED: Clock out since only one location allowed
@@ -893,8 +907,8 @@ export function AuthProvider({ children }) {
     rawLeaveRequests: leaveRequests,
     rawClockActivities: clockActivities,
     LEAVE_TYPES
-  }),[user, isOnManager, leaveRequests, clockActivities, allUsers, locations, departments, activeOTPs, filterStates])
-  
+  }), [user, isOnManager, leaveRequests, clockActivities, allUsers, locations, departments, activeOTPs, filterStates])
+
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 

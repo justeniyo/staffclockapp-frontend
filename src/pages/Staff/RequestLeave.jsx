@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useAuth } from '../../context/AuthContext'
+import { isCEO } from '../../config/seedUsers'
 
 export default function RequestLeave() {
   const { submitLeaveRequest, updateLeaveRequest, rawLeaveRequests, user, LEAVE_TYPES } = useAuth()
@@ -72,6 +73,13 @@ export default function RequestLeave() {
     return type === 'Emergency' || type === 'Sick'
   }
 
+  // CEO-specific helper functions
+  const getCEOLeaveMessage = (type, isUpdate = false) => {
+    const action = isUpdate ? 'updated' : 'submitted'
+    return `🏆 Leave request ${action} and automatically approved! 
+      As CEO, your ${type.toLowerCase()} leave has executive approval and is immediately active.`
+  }
+
   const handleSubmit = (e) => {
     e.preventDefault()
     setError('')
@@ -87,14 +95,27 @@ export default function RequestLeave() {
         throw new Error(`Reason is required for ${formData.type} leave`)
       }
 
-      // Check annual leave limit
+      // Check annual leave limit (CEO can override but show warning)
       if (!validateAnnualLeaveRequest(formData.type, formData.startDate, formData.endDate)) {
         const requestDays = getDaysDifference(formData.startDate, formData.endDate)
-        throw new Error(`This request would exceed your annual leave limit. You have ${annualLeaveStats.remaining} days remaining, but requested ${requestDays} days.`)
+        if (!isCEO(user)) {
+          throw new Error(`This request would exceed your annual leave limit. You have ${annualLeaveStats.remaining} days remaining, but requested ${requestDays} days.`)
+        } else {
+          // CEO warning but allow override
+          setError(`⚠️ CEO Override: This request exceeds standard annual leave limits (${requestDays} days requested, ${annualLeaveStats.remaining} remaining). Executive privilege allows this override.`)
+          setTimeout(() => setError(''), 5000) // Clear warning after 5 seconds
+        }
       }
 
-      submitLeaveRequest(formData)
-      setSuccess('Leave request submitted successfully!')
+      const result = submitLeaveRequest(formData)
+      
+      // Different success message for CEO auto-approval
+      if (isCEO(user)) {
+        setSuccess(getCEOLeaveMessage(formData.type))
+      } else {
+        setSuccess('✅ Leave request submitted successfully! Your request is pending manager approval.')
+      }
+      
       setFormData({
         type: 'Annual',
         startDate: '',
@@ -146,14 +167,25 @@ export default function RequestLeave() {
           (myRequests.find(r => r.id === editingRequest)?.type === 'Annual' ? 
            getDaysDifference(myRequests.find(r => r.id === editingRequest).startDate, myRequests.find(r => r.id === editingRequest).endDate) : 0)
         
-        setError(`This would exceed your annual leave limit. You would have ${remainingAfterEdit} days available, but requested ${requestDays} days.`)
-        return
+        if (!isCEO(user)) {
+          setError(`This would exceed your annual leave limit. You would have ${remainingAfterEdit} days available, but requested ${requestDays} days.`)
+          return
+        } else {
+          // CEO can override
+          setError(`⚠️ CEO Override: Edit exceeds standard limits. Executive privilege allows this modification.`)
+          setTimeout(() => setError(''), 5000)
+        }
       }
 
       updateLeaveRequest(editingRequest, editForm)
       setEditingRequest(null)
       setEditForm({})
-      setSuccess('Leave request updated successfully!')
+      
+      if (isCEO(user)) {
+        setSuccess(getCEOLeaveMessage(editForm.type, true))
+      } else {
+        setSuccess('✅ Leave request updated successfully! Changes are pending manager approval.')
+      }
       setError('')
     } catch (err) {
       setError(err.message)
@@ -199,7 +231,8 @@ export default function RequestLeave() {
   }
 
   const canEdit = (request) => {
-    return request.status === 'pending'
+    // CEO can edit approved requests, others can only edit pending
+    return isCEO(user) ? (request.status === 'pending' || request.status === 'approved') : request.status === 'pending'
   }
 
   const getLeaveTypeDescription = (type) => {
@@ -249,6 +282,9 @@ export default function RequestLeave() {
     <div>
       <div className="page-header">
         <h2 className="page-title">Request Leave</h2>
+        <p className="mb-0">
+          {isCEO(user) ? 'Executive Leave Management with Auto-Approval' : 'Submit leave requests for manager approval'}
+        </p>
       </div>
       
       <div className="page-content">
@@ -295,13 +331,42 @@ export default function RequestLeave() {
           </div>
         </div>
 
+        {/* CEO Executive Privilege Indicator */}
+        {isCEO(user) && (
+          <div className="row g-3 mb-4">
+            <div className="col-12">
+              <div className="alert alert-warning border-warning">
+                <div className="d-flex align-items-center">
+                  <i className="fas fa-crown fa-2x text-warning me-3"></i>
+                  <div>
+                    <h5 className="alert-heading mb-2">
+                      <i className="fas fa-star me-2"></i>
+                      CEO Executive Privilege
+                    </h5>
+                    <p className="mb-2">
+                      <strong>Auto-Approval Active:</strong> As Chief Executive Officer, all your leave requests 
+                      are automatically approved and become effective immediately upon submission.
+                    </p>
+                    <ul className="mb-0 small">
+                      <li>✅ No manager approval required</li>
+                      <li>✅ Instant activation of approved leave</li>
+                      <li>✅ Full editing privileges for active requests</li>
+                      <li>✅ Executive override on leave limit policies</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="row g-4">
           <div className="col-lg-6">
             <div className="card">
               <div className="card-header">
                 <h5 className="mb-0">
                   <i className="fas fa-plus-circle me-2"></i>
-                  New Leave Request
+                  {isCEO(user) ? 'New Executive Leave Request' : 'New Leave Request'}
                 </h5>
               </div>
               <div className="card-body">
@@ -330,16 +395,29 @@ export default function RequestLeave() {
                       <small className={getLeaveTypeInfo(formData.type).color}>
                         <i className={`fas ${getLeaveTypeInfo(formData.type).icon} me-1`}></i>
                         {getLeaveTypeInfo(formData.type).description}
+                        {isCEO(user) && (
+                          <span className="text-warning ms-2">
+                            <i className="fas fa-crown me-1"></i>
+                            Auto-approval enabled
+                          </span>
+                        )}
                       </small>
                     </div>
                     
-                    {formData.type === 'Annual' && annualLeaveStats.remaining <= 5 && (
+                    {formData.type === 'Annual' && annualLeaveStats.remaining <= 5 && !isCEO(user) && (
                       <div className={`mt-2 p-2 rounded ${annualLeaveStats.remaining === 0 ? 'bg-danger text-white' : 'bg-warning'}`}>
                         <i className="fas fa-exclamation-triangle me-1"></i>
                         {annualLeaveStats.remaining === 0 
                           ? 'No annual leave days remaining!'
                           : `Only ${annualLeaveStats.remaining} annual leave days remaining.`
                         }
+                      </div>
+                    )}
+
+                    {formData.type === 'Annual' && currentRequestExceedsLimit && isCEO(user) && (
+                      <div className="mt-2 p-2 rounded bg-warning">
+                        <i className="fas fa-crown me-1"></i>
+                        <strong>CEO Override:</strong> This request exceeds standard limits but will be auto-approved with executive privilege.
                       </div>
                     )}
                   </div>
@@ -395,26 +473,39 @@ export default function RequestLeave() {
                       />
                       <small className="text-muted">
                         Reason is required for {formData.type.toLowerCase()} leave requests
+                        {isCEO(user) && <span className="text-warning ms-1">(will be auto-approved)</span>}
                       </small>
                     </div>
                   )}
 
                   {/* Duration preview */}
                   {formData.startDate && formData.endDate && (
-                    <div className={`mt-3 p-3 rounded ${currentRequestExceedsLimit ? 'bg-danger text-white' : 'bg-light'}`}>
+                    <div className={`mt-3 p-3 rounded ${
+                      currentRequestExceedsLimit && !isCEO(user) ? 'bg-danger text-white' : 
+                      currentRequestExceedsLimit && isCEO(user) ? 'bg-warning' : 'bg-light'
+                    }`}>
                       <div className="d-flex justify-content-between align-items-center">
-                        <span className={currentRequestExceedsLimit ? 'text-white' : 'text-muted'}>
+                        <span className={currentRequestExceedsLimit && !isCEO(user) ? 'text-white' : 'text-muted'}>
                           <i className="fas fa-calendar-day me-1"></i>
                           Duration:
                         </span>
-                        <span className={`badge ${currentRequestExceedsLimit ? 'bg-white text-danger' : 'bg-info'}`}>
+                        <span className={`badge ${
+                          currentRequestExceedsLimit && !isCEO(user) ? 'bg-white text-danger' : 
+                          currentRequestExceedsLimit && isCEO(user) ? 'bg-dark text-warning' : 'bg-info'
+                        }`}>
                           {getDaysDifference(formData.startDate, formData.endDate)} day(s)
                         </span>
                       </div>
-                      {currentRequestExceedsLimit && (
+                      {currentRequestExceedsLimit && !isCEO(user) && (
                         <div className="mt-2">
                           <i className="fas fa-exclamation-triangle me-1"></i>
                           Exceeds available annual leave days!
+                        </div>
+                      )}
+                      {currentRequestExceedsLimit && isCEO(user) && (
+                        <div className="mt-2">
+                          <i className="fas fa-crown me-1"></i>
+                          CEO Executive Override - Request will be auto-approved
                         </div>
                       )}
                     </div>
@@ -426,11 +517,11 @@ export default function RequestLeave() {
                   <button 
                     type="submit" 
                     className="btn btn-warning w-100 mt-3"
-                    disabled={(formData.type === 'Annual' && annualLeaveStats.remaining === 0) || 
+                    disabled={(!isCEO(user) && formData.type === 'Annual' && annualLeaveStats.remaining === 0) || 
                              (requiresReason(formData.type) && !formData.reason.trim())}
                   >
                     <i className="fas fa-paper-plane me-2"></i>
-                    Submit Request
+                    {isCEO(user) ? 'Submit & Auto-Approve' : 'Submit Request'}
                   </button>
                 </form>
               </div>
@@ -442,7 +533,7 @@ export default function RequestLeave() {
               <div className="card-header">
                 <h5 className="mb-0">
                   <i className="fas fa-list me-2"></i>
-                  My Leave Requests
+                  {isCEO(user) ? 'My Executive Leave Requests' : 'My Leave Requests'}
                 </h5>
               </div>
               <div className="card-body">
@@ -512,17 +603,31 @@ export default function RequestLeave() {
                             </div>
                             
                             {editForm.startDate && editForm.endDate && (
-                              <div className={`mb-3 p-2 rounded ${currentEditExceedsLimit ? 'bg-danger text-white' : 'bg-light'}`}>
+                              <div className={`mb-3 p-2 rounded ${
+                                currentEditExceedsLimit && !isCEO(user) ? 'bg-danger text-white' : 
+                                currentEditExceedsLimit && isCEO(user) ? 'bg-warning' : 'bg-light'
+                              }`}>
                                 <div className="d-flex justify-content-between align-items-center">
-                                  <span className={`small ${currentEditExceedsLimit ? 'text-white' : 'text-muted'}`}>New Duration:</span>
-                                  <span className={`badge ${currentEditExceedsLimit ? 'bg-white text-danger' : 'bg-info'}`}>
+                                  <span className={`small ${
+                                    currentEditExceedsLimit && !isCEO(user) ? 'text-white' : 'text-muted'
+                                  }`}>New Duration:</span>
+                                  <span className={`badge ${
+                                    currentEditExceedsLimit && !isCEO(user) ? 'bg-white text-danger' : 
+                                    currentEditExceedsLimit && isCEO(user) ? 'bg-dark text-warning' : 'bg-info'
+                                  }`}>
                                     {getDaysDifference(editForm.startDate, editForm.endDate)} day(s)
                                   </span>
                                 </div>
-                                {currentEditExceedsLimit && (
+                                {currentEditExceedsLimit && !isCEO(user) && (
                                   <div className="mt-1 small">
                                     <i className="fas fa-exclamation-triangle me-1"></i>
                                     Would exceed annual leave limit!
+                                  </div>
+                                )}
+                                {currentEditExceedsLimit && isCEO(user) && (
+                                  <div className="mt-1 small">
+                                    <i className="fas fa-crown me-1"></i>
+                                    CEO Override - Will remain auto-approved
                                   </div>
                                 )}
                               </div>
@@ -532,11 +637,11 @@ export default function RequestLeave() {
                               <button 
                                 className="btn btn-success btn-sm"
                                 onClick={saveEdit}
-                                disabled={currentEditExceedsLimit || 
-                                         (requiresReason(editForm.type) && !editForm.reason.trim())}
+                                disabled={!isCEO(user) && (currentEditExceedsLimit || 
+                                         (requiresReason(editForm.type) && !editForm.reason.trim()))}
                               >
                                 <i className="fas fa-check me-1"></i>
-                                Save
+                                {isCEO(user) ? 'Save & Auto-Approve' : 'Save'}
                               </button>
                               <button 
                                 className="btn btn-secondary btn-sm"
@@ -558,6 +663,13 @@ export default function RequestLeave() {
                                   {req.type === 'Annual' && (
                                     <span className="badge bg-primary ms-2">
                                       {getDaysDifference(req.startDate, req.endDate)} of {annualLeaveStats.limit}
+                                    </span>
+                                  )}
+                                  {/* AUTO-APPROVAL BADGE */}
+                                  {req.isAutoApproved && (
+                                    <span className="badge bg-warning text-dark ms-2">
+                                      <i className="fas fa-crown me-1"></i>
+                                      Auto-Approved
                                     </span>
                                   )}
                                 </div>
@@ -582,6 +694,7 @@ export default function RequestLeave() {
                                 <span className={`badge ${getStatusBadge(req.status)} mb-2`}>
                                   <i className={`fas ${getStatusIcon(req.status)} me-1`}></i>
                                   {req.status.charAt(0).toUpperCase() + req.status.slice(1)}
+                                  {req.isAutoApproved && ' (Auto)'}
                                 </span>
                                 {canEdit(req) && (
                                   <div>
@@ -590,7 +703,7 @@ export default function RequestLeave() {
                                       onClick={() => startEdit(req)}
                                     >
                                       <i className="fas fa-edit me-1"></i>
-                                      Edit
+                                      {req.isAutoApproved ? 'Modify' : 'Edit'}
                                     </button>
                                   </div>
                                 )}
@@ -605,13 +718,24 @@ export default function RequestLeave() {
                               {req.processedDate && (
                                 <span>
                                   <i className={`fas ${req.status === 'approved' ? 'fa-check' : 'fa-times'} me-1`}></i>
-                                  {req.status === 'approved' ? 'Approved' : 'Rejected'}: {new Date(req.processedDate).toLocaleDateString()}
+                                  {req.isAutoApproved ? 'Auto-Approved' : req.status === 'approved' ? 'Approved' : 'Rejected'}: {new Date(req.processedDate).toLocaleDateString()}
                                 </span>
                               )}
                             </div>
                             
-                            {/* Show processing notes for Emergency and Sick leaves */}
-                            {req.processingNotes && (req.type === 'Emergency' || req.type === 'Sick') && (
+                            {/* CEO AUTO-APPROVAL NOTES */}
+                            {req.isAutoApproved && req.processingNotes && (
+                              <div className="mt-2 p-2 bg-warning bg-opacity-10 rounded border border-warning">
+                                <small className="text-warning d-block mb-1">
+                                  <i className="fas fa-crown me-1"></i>
+                                  Executive Status:
+                                </small>
+                                <small className="fw-semibold">{req.processingNotes}</small>
+                              </div>
+                            )}
+                            
+                            {/* Regular processing notes for non-auto-approved requests */}
+                            {!req.isAutoApproved && req.processingNotes && (req.type === 'Emergency' || req.type === 'Sick') && (
                               <div className="mt-2 p-2 bg-light rounded">
                                 <small className="text-muted d-block mb-1">Manager Notes:</small>
                                 <small>{req.processingNotes}</small>
